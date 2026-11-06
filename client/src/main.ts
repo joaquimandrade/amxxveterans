@@ -165,6 +165,11 @@ room.onMessage("bolt", (bolt: { fromX: number; fromZ: number; toX: number; toZ: 
 renderer.resize();
 
 function frame(now: number) {
+  requestAnimationFrame(frame);
+
+  /* The first state patch can arrive a moment after joining */
+  if (!room.state?.players || !room.state?.shots) return;
+
   const dt = Math.min((now - lastFrame) / 1000, 0.1);
   const players: Map<string, PlayerState> = room.state.players;
   const shots: Map<string, ShotState> = room.state.shots;
@@ -194,7 +199,6 @@ function frame(now: number) {
   renderer.clampCamera(camera);
   renderer.draw(camera, [...views.values()], shotViews, dt);
   updateHud(players);
-  requestAnimationFrame(frame);
 }
 
 requestAnimationFrame(frame);
