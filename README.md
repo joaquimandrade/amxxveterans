@@ -25,7 +25,7 @@ Each branch runs in its own Docker container with no access to the host, the LAN
 
 ## Controls
 
-WASD or arrows move, the mouse aims, and click or space fires.
+Right click moves, left click swings the sword, space throws a fireball at the mouse, and the wheel zooms.
 
 ## Where things live
 
@@ -35,7 +35,9 @@ WASD or arrows move, the mouse aims, and click or space fires.
 | `server/src/state.ts` | State synced to clients |
 | `client/src/main.ts` | Input, avatars, animation, following the server state |
 | `client/src/effects.ts` | Fireball and particle effects |
-| `client/src/world.ts` | Scene, lighting, ground, crates |
+| `client/src/world.ts` | Scene, lighting, ground and forest |
+| `client/src/hero.ts` | The hero, built and animated in code |
+| `shared/forest.ts` | Forest layout, used by server collisions and client drawing |
 
 ## Adding a power
 
@@ -44,7 +46,5 @@ WASD or arrows move, the mouse aims, and click or space fires.
 3. Bind a key in `client/src/main.ts`.
 
 ## Models
-
-`client/public/models/robot.glb` is RobotExpressive by Tomás Laulhé, CC0, with modifications by Don McCurdy, from the three.js examples.
 
 This repository is public, so check a model's licence before committing it. Many store licences forbid redistribution.
