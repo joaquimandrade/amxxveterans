@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AMXX Veterans</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1412; }
+      canvas { display: block; }
+      #hud {
+        position: fixed; top: 12px; left: 14px; color: #f3e6d0; pointer-events: none;
+        font: 14px/1.5 ui-monospace, Menlo, Consolas, monospace; text-shadow: 0 1px 3px #000;
+      }
+      #hud b { color: #ffb347; }
+    </style>
+  </head>
+  <body>
+    <div id="hud">connecting…</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
