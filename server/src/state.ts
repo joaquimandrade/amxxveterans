@@ -10,8 +10,9 @@ export class Player extends Schema {
   @type("boolean") running = false;
   @type("number") hits = 0;
   @type("number") mana = 100;
+  @type("string") area = "city";
   @type("string") weapon = "sword";
-  @type(["string"]) inventory = new ArraySchema<string>("sword");
+  @type(["string"]) inventory = new ArraySchema<string>("sword", "axe");
 }
 
 export class GroundItem extends Schema {
@@ -28,6 +29,7 @@ export class Chest extends Schema {
 
 export class Shot extends Schema {
   @type("string") owner = "";
+  @type("string") area = "city";
   @type("number") x = 0;
   @type("number") z = 0;
   @type("number") vx = 0;

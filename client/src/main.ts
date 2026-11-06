@@ -1,4 +1,5 @@
 import { Client, type Room } from "@colyseus/sdk";
+import { HOTSPOTS } from "../../shared/areas.ts";
 import { SPAWN } from "../../shared/forest.ts";
 import { type Camera, type Pickable, type PlayerView, Renderer, artUrl, loadArt } from "./render.ts";
 
@@ -11,11 +12,12 @@ type PlayerState = {
   moving: boolean;
   running: boolean;
   hits: number;
+  area: string;
   mana: number;
   weapon: string;
   inventory: string[];
 };
-type ShotState = { x: number; z: number };
+type ShotState = { x: number; z: number; area: string };
 type GroundState = { kind: string; x: number; z: number };
 type ChestState = { x: number; z: number; open: boolean };
 
@@ -35,6 +37,7 @@ const manaFill = document.getElementById("mana-fill")!;
 const panel = document.getElementById("panel")!;
 const panelHint = document.getElementById("panel-hint")!;
 const slots = document.getElementById("slots")!;
+const fadeLayer = document.getElementById("fade")!;
 const canvas = document.createElement("canvas");
 
 const base = import.meta.env.BASE_URL;
@@ -57,6 +60,8 @@ let cameraReady = false;
 let hovered: string | undefined;
 let pickables: Pickable[] = [];
 let shownInventory = "";
+let currentArea = "city";
+let fade = 0;
 let lastLeftClick = -Infinity;
 let casting = false;
 let holdTimer: ReturnType<typeof setTimeout> | undefined;
@@ -118,7 +123,7 @@ function updateHud(players: Map<string, PlayerState>) {
   players.forEach((player, id) => {
     rows.push(`${id === room.sessionId ? "<b>you</b> " : ""}${player.name}: ${player.hits}`);
   });
-  hud.innerHTML = `${rows.join("<br>")}<br><br>left click walk or pick up · double click run · right click attack · hold right lightning · space fireball · M inventory · wheel zoom`;
+  hud.innerHTML = `${rows.join("<br>")}<br><br>left click walk or use · double click run · right click attack · hold right lightning · space fireball · M inventory · wheel zoom`;
 }
 
 addEventListener("contextmenu", (event) => event.preventDefault());
@@ -173,8 +178,11 @@ function renderInventory(player: PlayerState) {
 function collectPickables() {
   const items: Map<string, GroundState> = room.state.items;
   const chests: Map<string, ChestState> = room.state.chests;
-  const list: Pickable[] = [];
+  const list: Pickable[] = HOTSPOTS.filter((spot) => spot.area === currentArea).map(
+    ({ id, x, y, label }) => ({ id, x, y, label }),
+  );
 
+  if (currentArea !== "city") return list;
   items.forEach((item, id) => list.push({ id, sprite: `item_${item.kind}`, x: item.x, y: item.z }));
   chests.forEach((chest, id) => {
     list.push({ id, sprite: chest.open ? "item_chest_open" : "item_chest", x: chest.x, y: chest.z });
@@ -234,7 +242,9 @@ addEventListener("wheel", (event) => {
 });
 addEventListener("resize", () => renderer.resize());
 
-room.onMessage("explode", ({ x, z }: { x: number; z: number }) => renderer.explode(x, z));
+room.onMessage("explode", ({ x, z, area }: { x: number; z: number; area: string }) => {
+  if (area === currentArea) renderer.explode(x, z);
+});
 room.onMessage("hit", ({ id }: { id: string }) => {
   const view = views.get(id);
 
@@ -246,8 +256,8 @@ room.onMessage("slash", ({ id }: { id: string }) => {
   if (view) view.slashTime = 0;
 });
 room.onMessage("cast", () => {});
-room.onMessage("bolt", (bolt: { fromX: number; fromZ: number; toX: number; toZ: number }) => {
-  renderer.addBolt(bolt.fromX, bolt.fromZ, bolt.toX, bolt.toZ);
+room.onMessage("bolt", (bolt: { area: string; fromX: number; fromZ: number; toX: number; toZ: number }) => {
+  if (bolt.area === currentArea) renderer.addBolt(bolt.fromX, bolt.fromZ, bolt.toX, bolt.toZ);
 });
 
 renderer.resize();
@@ -271,10 +281,24 @@ function frame(now: number) {
   const shotViews: { x: number; y: number }[] = [];
 
   shots.forEach((shot) => {
+    if (shot.area !== currentArea) return;
     shotViews.push({ x: shot.x, y: shot.z });
     renderer.trail(shot.x, shot.z - 60);
   });
 
+  const selfPlayer = players.get(room.sessionId);
+
+  if (selfPlayer && selfPlayer.area !== currentArea) {
+    currentArea = selfPlayer.area;
+    fade = 1;
+    cameraReady = false;
+    const view = views.get(room.sessionId);
+
+    if (view) {
+      view.x = selfPlayer.x;
+      view.y = selfPlayer.z;
+    }
+  }
   pickables = collectPickables();
   hovered = pickableAt(pointer.x, pointer.y)?.id;
   canvas.style.cursor = hovered ? "pointer" : "";
@@ -295,8 +319,13 @@ function frame(now: number) {
     camera.y += (self.y - 60 - camera.y) * follow;
     cameraReady = true;
   }
-  renderer.clampCamera(camera);
-  renderer.draw(camera, [...views.values()], shotViews, pickables, hovered, dt);
+  renderer.clampCamera(camera, currentArea);
+
+  const visible = [...views].filter(([id]) => players.get(id)?.area === currentArea).map(([, view]) => view);
+
+  renderer.draw(currentArea, camera, visible, shotViews, pickables, hovered, dt);
+  fade = Math.max(0, fade - dt * 2);
+  fadeLayer.style.opacity = String(fade);
   updateHud(players);
 }
 

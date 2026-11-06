@@ -12,6 +12,7 @@
         font: 14px/1.5 ui-monospace, Menlo, Consolas, monospace; text-shadow: 0 1px 3px #000;
       }
       #hud b { color: #ffb347; }
+      #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; }
       #mana { position: fixed; left: 14px; bottom: 16px; width: 220px; height: 16px; background: #1b2238cc; border: 2px solid #c9a86a; border-radius: 3px; }
       #mana-fill { height: 100%; background: linear-gradient(#6aa8ff, #2a56c8); }
       #panel {
@@ -30,6 +31,7 @@
     </style>
   </head>
   <body>
+    <div id="fade"></div>
     <div id="hud">connecting…</div>
     <div id="mana"><div id="mana-fill"></div></div>
     <section id="panel" hidden>

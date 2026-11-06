@@ -221,6 +221,20 @@ def objects():
     return sprites
 
 
+def mansion():
+    rgb = load("city/mansion.png")
+    pink = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
+    labels, found = ndimage.label(ndimage.binary_opening(pink < 60))
+    sizes = ndimage.sum(np.ones_like(labels), labels, range(1, found + 1))
+    label = int(np.argmax(sizes)) + 1
+    area = ndimage.find_objects(labels)[label - 1]
+    alpha = ndimage.gaussian_filter((labels[area] == label).astype(np.float32), 0.9)
+    alpha *= np.clip(1 - (pink[area] - 30) / 40, 0, 1)
+    sprite = Image.fromarray(np.dstack([rgb[area], alpha * 255]).astype(np.uint8), "RGBA")
+    scale = 640 / sprite.height
+    sprite.resize((round(sprite.width * scale), 640), Image.LANCZOS).save(f"{ART}/mansion.webp", quality=88, method=6)
+
+
 def ground():
     """Mirrors the street corner into a grid, so the sidewalks form city blocks."""
     source = Image.open(f"{SOURCE}/city/ground.png").convert("RGB")
@@ -238,6 +252,14 @@ def ground():
                 piece = piece.transpose(Image.FLIP_TOP_BOTTOM)
             world.paste(piece, (column * tile_w, row * tile_h))
     world.save(f"{ART}/ground.webp", quality=80, method=6)
+    for room in ("hall", "upper"):
+        painting = Image.open(f"{SOURCE}/city/{room}.png").convert("RGB").resize((1430, 798), Image.LANCZOS)
+        pixels = np.asarray(painting).astype(np.float32)
+        backdrop = np.linalg.norm(pixels - pixels[4, 4], axis=2) < 26
+        labels, _ = ndimage.label(backdrop)
+        outside = labels == labels[4, 4]
+        pixels[ndimage.binary_dilation(outside, iterations=2)] = (10, 10, 16)
+        Image.fromarray(pixels.astype(np.uint8)).save(f"{ART}/room_{room}.webp", quality=84, method=6)
     return tile_w * 3, height, tile_w, tile_h
 
 
@@ -259,6 +281,8 @@ def place(sprites, width, height, tile_w, tile_h):
             return False
         if any((x - spawn[0] - dx) ** 2 + (y - spawn[1] - dy) ** 2 < 120**2 for dx, dy in keep_clear):
             return False
+        if (x - spawn[0] - 60) ** 2 + ((y - spawn[1] + 330) * 1.3) ** 2 < 470**2:
+            return False  # the mansion's plot
         return all((x - o["x"]) ** 2 + ((y - o["y"]) * 1.5) ** 2 >= gap**2 for o in placed)
 
     # City blocks sit on the sidewalks where four mirrored tiles meet.
@@ -292,6 +316,7 @@ def place(sprites, width, height, tile_w, tile_h):
 
 
 sprites = objects()
+mansion()
 hero()
 items()
 world_width, height, tile_w, tile_h = ground()

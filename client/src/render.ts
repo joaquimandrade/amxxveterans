@@ -1,4 +1,5 @@
-import { OBJECTS, SPRITES, WORLD_H, WORLD_W } from "../../shared/forest.ts";
+import { AREAS, MANSION } from "../../shared/areas.ts";
+import { OBJECTS, SPRITES } from "../../shared/forest.ts";
 
 declare const __BUILD__: string;
 
@@ -37,7 +38,7 @@ type Particle = { x: number; y: number; vx: number; vy: number; life: number; ma
 
 export type Camera = { x: number; y: number; zoom: number };
 
-export type Pickable = { id: string; sprite: string; x: number; y: number };
+export type Pickable = { id: string; sprite?: string; label?: string; x: number; y: number };
 
 function loadImage(url: string) {
   const image = new Image();
@@ -59,6 +60,9 @@ export async function loadArt(base: string) {
   const sprites = new Map(
     await load([
       "ground",
+      "mansion",
+      "room_hall",
+      "room_upper",
       ...SPRITES.map((sprite) => sprite.name),
       ...ITEM_KINDS.map((kind) => `item_${kind}`),
       ...HERO_SHEETS.flatMap((sheet) => [`hero_${sheet}`, `hero_axe_${sheet}`]),
@@ -103,7 +107,8 @@ export class Renderer {
   }
 
   /** Keeps the view inside the painting. */
-  clampCamera(camera: Camera) {
+  clampCamera(camera: Camera, areaName: string) {
+    const { width: WORLD_W, height: WORLD_H } = AREAS[areaName];
     const scale = this.viewScale(camera);
     const halfW = this.canvas.width / scale / 2;
     const halfH = this.canvas.height / scale / 2;
@@ -221,6 +226,19 @@ export class Renderer {
     context.globalAlpha = 1;
   }
 
+  private drawMansion(heroes: PlayerView[]) {
+    const context = this.context;
+    const image = this.art.sprites.get("mansion")!;
+    const left = MANSION.x - image.width / 2;
+    const top = MANSION.y - image.height + 8;
+    const self = heroes.find((hero) => hero.isSelf);
+    const covers = self && self.y < MANSION.y - 40 && self.y > top && Math.abs(self.x - MANSION.x) < image.width / 2;
+
+    context.globalAlpha = covers ? 0.42 : 1;
+    context.drawImage(image, left, top);
+    context.globalAlpha = 1;
+  }
+
   private drawShadow(x: number, y: number, radiusX: number, radiusY: number, alpha: number) {
     const context = this.context;
 
@@ -273,7 +291,26 @@ export class Renderer {
     context.fillText(hero.name, hero.x, hero.y - 187);
   }
 
+  private drawHotspot(item: Pickable, hovered: boolean) {
+    const context = this.context;
+    const pulse = 0.55 + Math.sin(this.time * 3) * 0.2;
+
+    context.strokeStyle = `rgba(255,220,130,${hovered ? 1 : pulse})`;
+    context.lineWidth = hovered ? 4 : 2;
+    context.beginPath();
+    context.ellipse(item.x, item.y, 46, 19, 0, 0, Math.PI * 2);
+    context.stroke();
+    if (!hovered || !item.label) return;
+    context.font = "600 24px Georgia, serif";
+    context.textAlign = "center";
+    context.fillStyle = "rgba(0,0,0,0.75)";
+    context.fillText(item.label, item.x + 1, item.y - 39);
+    context.fillStyle = "#ffe9b0";
+    context.fillText(item.label, item.x, item.y - 40);
+  }
+
   private drawPickable(item: Pickable, hovered: boolean) {
+    if (!item.sprite) return this.drawHotspot(item, hovered);
     const context = this.context;
     const image = this.art.sprites.get(item.sprite)!;
 
@@ -371,6 +408,8 @@ export class Renderer {
       if (object.light) hole(object.x, object.y - 170, LAMP_RADIUS, 0.95);
       else if (object.radius > 60) hole(object.x, object.y - 170 * object.scale, 170, 0.5);
     }
+    hole(MANSION.x - 170, MANSION.y - 60, 230, 0.8);
+    hole(MANSION.x, MANSION.y - 320, 380, 0.45);
     for (const hero of heroes) hole(hero.x, hero.y - 80, HERO_LIGHT_RADIUS, hero.isSelf ? 0.9 : 0.7);
     for (const shot of shots) hole(shot.x, shot.y - 60, 300, 1);
     for (const bolt of this.bolts) {
@@ -437,6 +476,7 @@ export class Renderer {
   }
 
   draw(
+    areaName: string,
     camera: Camera,
     heroes: PlayerView[],
     shots: { x: number; y: number }[],
@@ -449,14 +489,18 @@ export class Renderer {
 
     this.time += dt;
     context.setTransform(scale, 0, 0, scale, this.canvas.width / 2 - camera.x * scale, this.canvas.height / 2 - camera.y * scale);
-    context.fillStyle = "#0c0e18";
-    context.fillRect(camera.x - 4096, camera.y - 4096, 8192, 8192);
-    context.drawImage(this.art.sprites.get("ground")!, 0, 0, WORLD_W, WORLD_H);
+    const isCity = areaName === "city";
+    const area = AREAS[areaName];
+
+    context.fillStyle = "#0a0a10";
+    context.fillRect(camera.x - 8192, camera.y - 8192, 16384, 16384);
+    context.drawImage(this.art.sprites.get(isCity ? "ground" : `room_${areaName}`)!, 0, 0, area.width, area.height);
     this.drawMarker(dt);
 
     /* Painter's order: whatever stands lower on the map is drawn later */
     const items = [
-      ...OBJECTS.map((object) => ({ y: object.y, draw: () => this.drawObject(object, heroes) })),
+      ...(isCity ? OBJECTS : []).map((object) => ({ y: object.y, draw: () => this.drawObject(object, heroes) })),
+      ...(isCity ? [{ y: MANSION.y, draw: () => this.drawMansion(heroes) }] : []),
       ...pickables.map((item) => ({ y: item.y, draw: () => this.drawPickable(item, item.id === hovered) })),
       ...heroes.map((hero) => ({ y: hero.y, draw: () => this.drawHero(hero) })),
       ...shots.map((shot) => ({ y: shot.y, draw: () => this.drawFireball(shot.x, shot.y) })),
@@ -465,14 +509,14 @@ export class Renderer {
     for (const item of items) item.draw();
 
     context.setTransform(1, 0, 0, 1, 0, 0);
-    this.drawNight(camera, heroes, shots);
+    if (isCity) this.drawNight(camera, heroes, shots);
     context.setTransform(scale, 0, 0, scale, this.canvas.width / 2 - camera.x * scale, this.canvas.height / 2 - camera.y * scale);
-    this.drawLampGlow();
+    if (isCity) this.drawLampGlow();
     this.drawBolts(dt);
     this.drawParticles(dt);
 
     context.setTransform(1, 0, 0, 1, 0, 0);
-    this.drawRain(dt);
+    if (isCity) this.drawRain(dt);
     this.drawVignette();
   }
 }

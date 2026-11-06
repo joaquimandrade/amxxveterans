@@ -1,6 +1,7 @@
 import { Client, Room } from "@colyseus/core";
-import { OBJECTS, SPAWN, WORLD_H, WORLD_W } from "../../shared/forest.ts";
-import { ArenaState, Chest, GroundItem, Player, Shot } from "./state.ts";
+import { AREAS, HOTSPOTS, insideFloor } from "../../shared/areas.ts";
+import { SPAWN } from "../../shared/forest.ts";
+import { ArenaState, GroundItem, Player, Shot } from "./state.ts";
 
 const TICK_MS = 33;
 const WALK_SPEED = 190;
@@ -9,7 +10,6 @@ const ARRIVE_DISTANCE = 8;
 const PLAYER_RADIUS = 22;
 /* The ground is seen at an angle, so vertical distances look shorter */
 const DEPTH_SCALE = 0.72;
-const SOLID = OBJECTS.filter((object) => object.radius > 0);
 const SHOT_SPEED = 720;
 const SHOT_LIFE_MS = 1400;
 const SHOT_COOLDOWN_MS = 500;
@@ -24,6 +24,7 @@ const BOLT_WIDTH = 46;
 const BOLT_COOLDOWN_MS = 550;
 const BOLT_KNOCKBACK = 700;
 const REACH = 70;
+const HOTSPOT_REACH = 90;
 const RESPAWN_MS = 30_000;
 const CHEST_RESET_MS = 30_000;
 const MAX_INVENTORY = 20;
@@ -38,12 +39,6 @@ const WEAPONS: Record<string, { range: number; knockback: number; cooldown: numb
   axe: { range: 145, knockback: 1250, cooldown: 800 },
 };
 const CHEST_LOOT = ["potion_mana", "potion_mana", "coins", "ring", "helmet", "pouch", "axe"];
-const STARTING_ITEMS = [
-  { kind: "axe", x: 200, z: -30 },
-  { kind: "potion_mana", x: -170, z: 70 },
-  { kind: "potion_mana", x: 520, z: 240 },
-];
-const STARTING_CHESTS = [{ x: 70, z: 210 }, { x: -420, z: -130 }];
 const KNOCKBACK_DECAY = 6;
 
 type Runtime = {
@@ -79,8 +74,11 @@ export class Arena extends Room {
       const runtime = this.runtime.get(client.sessionId);
 
       if (!runtime || !target) return;
-      runtime.targetX = clamp(Number(target.x) || 0, 0, WORLD_W);
-      runtime.targetZ = clamp(Number(target.z) || 0, 0, WORLD_H);
+      const player = this.state.players.get(client.sessionId);
+      const area = AREAS[player?.area ?? "city"];
+
+      runtime.targetX = clamp(Number(target.x) || 0, 0, area.width);
+      runtime.targetZ = clamp(Number(target.z) || 0, 0, area.height);
       runtime.hasTarget = true;
       runtime.running = Boolean(target.run);
       runtime.pending = undefined;
@@ -95,14 +93,6 @@ export class Arena extends Room {
       if (player && kind in WEAPONS && player.inventory.includes(kind)) player.weapon = kind;
     });
     this.onMessage("use", (client, index: number) => this.useItem(client.sessionId, Number(index)));
-    for (const item of STARTING_ITEMS) this.placeItem(item.kind, SPAWN.x + item.x, SPAWN.y + item.z, true);
-    STARTING_CHESTS.forEach((position, index) => {
-      const chest = new Chest();
-
-      chest.x = SPAWN.x + position.x;
-      chest.z = SPAWN.y + position.z;
-      this.state.chests.set(`chest${index}`, chest);
-    });
     this.setSimulationInterval((dt) => this.step(dt), TICK_MS);
   }
 
@@ -140,17 +130,21 @@ export class Arena extends Room {
     const id = `item${this.nextItem++}`;
 
     item.kind = kind;
-    item.x = clamp(x, 0, WORLD_W);
-    item.z = clamp(z, 0, WORLD_H);
+    item.x = x;
+    item.z = z;
     this.state.items.set(id, item);
     if (respawns) this.respawning.add(id);
   }
 
   private interact(playerId: string, targetId: string) {
     const runtime = this.runtime.get(playerId);
-    const target = this.state.items.get(targetId) ?? this.state.chests.get(targetId);
+    const player = this.state.players.get(playerId);
+    const hotspot = HOTSPOTS.find((spot) => spot.id === targetId);
+    const scenery = this.state.items.get(targetId) ?? this.state.chests.get(targetId);
+    const target = hotspot ? { x: hotspot.x, z: hotspot.y } : scenery;
 
-    if (!runtime || !target) return;
+    if (!runtime || !player || !target) return;
+    if (player.area !== (hotspot?.area ?? "city")) return;
     runtime.pending = targetId;
     runtime.targetX = target.x;
     runtime.targetZ = target.z;
@@ -160,6 +154,18 @@ export class Arena extends Room {
   /** Runs when a hero reaches the thing it was sent to. */
   private finishInteraction(player: Player, runtime: Runtime) {
     const id = runtime.pending!;
+    const hotspot = HOTSPOTS.find((spot) => spot.id === id);
+
+    if (hotspot) {
+      if (Math.hypot(player.x - hotspot.x, player.z - hotspot.y) > HOTSPOT_REACH) return;
+      player.area = hotspot.toArea;
+      player.x = hotspot.toX;
+      player.z = hotspot.toY;
+      runtime.pending = undefined;
+      runtime.hasTarget = false;
+      return;
+    }
+
     const item = this.state.items.get(id);
     const chest = this.state.chests.get(id);
     const target = item ?? chest;
@@ -215,6 +221,7 @@ export class Arena extends Room {
     const shotId = String(this.nextShot++);
 
     shot.owner = id;
+    shot.area = player.area;
     shot.vx = Math.sin(aim) * SHOT_SPEED;
     shot.vz = Math.cos(aim) * SHOT_SPEED * DEPTH_SCALE;
     shot.x = player.x + Math.sin(aim) * 40;
@@ -242,7 +249,7 @@ export class Arena extends Room {
       const dx = other.x - player.x;
       const dz = other.z - player.z;
 
-      if (otherId === id || !otherRuntime || Math.hypot(dx, dz) > weapon.range) return;
+      if (otherId === id || !otherRuntime || other.area !== player.area || Math.hypot(dx, dz) > weapon.range) return;
       if (angleDifference(Math.atan2(dx, dz), aim) > SLASH_ARC) return;
       player.hits++;
       otherRuntime.pushX += Math.sin(aim) * weapon.knockback;
@@ -270,7 +277,7 @@ export class Arena extends Room {
     const along = (x: number, z: number) => (x - player.x) * directionX + (z - player.z) * directionZ;
     const across = (x: number, z: number) => Math.abs((x - player.x) * directionZ - (z - player.z) * directionX);
 
-    for (const object of SOLID) {
+    for (const object of AREAS[player.area].solids) {
       const distance = along(object.x, object.y);
 
       if (distance > 0 && distance < reach && across(object.x, object.y) < object.radius) reach = distance;
@@ -278,7 +285,7 @@ export class Arena extends Room {
     this.state.players.forEach((other, otherId) => {
       const distance = along(other.x, other.z);
 
-      if (otherId === id || distance <= 0 || distance >= reach) return;
+      if (otherId === id || other.area !== player.area || distance <= 0 || distance >= reach) return;
       if (across(other.x, other.z) > BOLT_WIDTH) return;
       reach = distance;
       target = otherId;
@@ -296,6 +303,7 @@ export class Arena extends Room {
     }
     this.broadcast("bolt", {
       id,
+      area: player.area,
       fromX: player.x,
       fromZ: player.z,
       toX: player.x + directionX * reach,
@@ -304,7 +312,7 @@ export class Arena extends Room {
   }
 
   private removeShot(id: string, shot: Shot, exploded: boolean) {
-    if (exploded) this.broadcast("explode", { x: shot.x, z: shot.z });
+    if (exploded) this.broadcast("explode", { x: shot.x, z: shot.z, area: shot.area });
     this.state.shots.delete(id);
     this.shotLife.delete(id);
   }
@@ -334,13 +342,18 @@ export class Arena extends Room {
 
     player.moving = runtime.hasTarget;
     player.running = runtime.hasTarget && runtime.running;
-    player.x = clamp(player.x + (moveX + runtime.pushX) * dt, 0, WORLD_W);
-    player.z = clamp(player.z + (moveZ + runtime.pushZ) * dt, 0, WORLD_H);
+    const area = AREAS[player.area];
+    const nextX = clamp(player.x + (moveX + runtime.pushX) * dt, 0, area.width);
+    const nextZ = clamp(player.z + (moveZ + runtime.pushZ) * dt, 0, area.height);
+
+    /* Walls stop one axis at a time, so heroes slide along them */
+    if (insideFloor(area, nextX, player.z)) player.x = nextX;
+    if (insideFloor(area, player.x, nextZ)) player.z = nextZ;
     runtime.pushX *= Math.exp(-KNOCKBACK_DECAY * dt);
     runtime.pushZ *= Math.exp(-KNOCKBACK_DECAY * dt);
 
     /* Slide around trunks and rocks instead of stopping dead */
-    for (const object of SOLID) {
+    for (const object of area.solids) {
       const dx = player.x - object.x;
       const dz = player.z - object.y;
       const distance = Math.hypot(dx, dz) || 0.001;
@@ -368,12 +381,15 @@ export class Arena extends Room {
       shot.z += shot.vz * dt;
       this.shotLife.set(id, life);
 
-      let hit = SOLID.some((object) => Math.hypot(object.x - shot.x, object.y - shot.z) < object.radius + 10);
+      const area = AREAS[shot.area];
+      let hit =
+        !insideFloor(area, shot.x, shot.z) ||
+        area.solids.some((object) => Math.hypot(object.x - shot.x, object.y - shot.z) < object.radius + 10);
 
       this.state.players.forEach((player, playerId) => {
         const runtime = this.runtime.get(playerId);
 
-        if (hit || playerId === shot.owner || !runtime) return;
+        if (hit || playerId === shot.owner || !runtime || player.area !== shot.area) return;
         if (Math.hypot(player.x - shot.x, player.z - shot.z) > SHOT_HIT_RADIUS) return;
 
         const owner = this.state.players.get(shot.owner);
