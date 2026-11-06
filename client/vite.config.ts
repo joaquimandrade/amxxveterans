@@ -1,3 +1,6 @@
 import { defineConfig } from "vite";
 
-export default defineConfig({ server: { host: true } });
+export default defineConfig({
+  base: process.env.VITE_BASE ?? "/",
+  server: { host: true },
+});

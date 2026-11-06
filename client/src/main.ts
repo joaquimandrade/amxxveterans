@@ -37,11 +37,12 @@ const avatars = new Map<string, Avatar>();
 const shotMeshes = new Map<string, THREE.Object3D>();
 let lastFrame = performance.now();
 
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 const url = import.meta.env.DEV
   ? `ws://${location.hostname}:8091`
-  : `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
+  : `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${basePath}`;
 
-const gltf = await new GLTFLoader().loadAsync("/models/robot.glb");
+const gltf = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}models/robot.glb`);
 const room: Room = await new Client(url).joinOrCreate("arena");
 
 function createAvatar(player: PlayerState): Avatar {

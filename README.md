@@ -17,6 +17,12 @@ Open http://localhost:5173 in two tabs. Dev mode connects to the game server on 
 
 For production, `npm run build && npm start` serves the client and the game from port 8091.
 
+## Branch previews
+
+https://amxx.duendefm.work lists the branches. `/branch/NAME/` runs the latest commit of that branch, client and server, so a push is live on the next visit.
+
+Each branch runs in its own Docker container with no access to the host, the LAN or the internet. `hub/hub.ts` does the builds and the proxying.
+
 ## Controls
 
 WASD or arrows move, the mouse aims, and click or space fires.
