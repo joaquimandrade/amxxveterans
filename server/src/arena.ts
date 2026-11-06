@@ -1,6 +1,6 @@
 import { Client, Room } from "@colyseus/core";
 import { OBJECTS, SPAWN, WORLD_H, WORLD_W } from "../../shared/forest.ts";
-import { ArenaState, Player, Shot } from "./state.ts";
+import { ArenaState, Chest, GroundItem, Player, Shot } from "./state.ts";
 
 const TICK_MS = 33;
 const WALK_SPEED = 240;
@@ -23,6 +23,27 @@ const BOLT_RANGE = 760;
 const BOLT_WIDTH = 46;
 const BOLT_COOLDOWN_MS = 550;
 const BOLT_KNOCKBACK = 700;
+const REACH = 70;
+const RESPAWN_MS = 30_000;
+const CHEST_RESET_MS = 30_000;
+const MAX_INVENTORY = 20;
+const MANA_MAX = 100;
+const MANA_REGEN = 3;
+const FIRE_COST = 10;
+const BOLT_COST = 15;
+const POTION_MANA = 50;
+
+const WEAPONS: Record<string, { range: number; knockback: number; cooldown: number }> = {
+  sword: { range: SLASH_RANGE, knockback: SLASH_KNOCKBACK, cooldown: SLASH_COOLDOWN_MS },
+  axe: { range: 145, knockback: 1250, cooldown: 800 },
+};
+const CHEST_LOOT = ["potion_mana", "potion_mana", "coins", "ring", "helmet", "pouch", "axe"];
+const STARTING_ITEMS = [
+  { kind: "axe", x: 200, z: -30 },
+  { kind: "potion_mana", x: -170, z: 70 },
+  { kind: "potion_mana", x: 520, z: 240 },
+];
+const STARTING_CHESTS = [{ x: 70, z: 210 }, { x: -420, z: -130 }];
 const KNOCKBACK_DECAY = 6;
 
 type Runtime = {
@@ -31,6 +52,7 @@ type Runtime = {
   hasTarget: boolean;
   running: boolean;
   lastBolt: number;
+  pending?: string;
   lastShot: number;
   lastSlash: number;
   pushX: number;
@@ -48,6 +70,8 @@ export class Arena extends Room {
   private runtime = new Map<string, Runtime>();
   private shotLife = new Map<string, number>();
   private nextShot = 0;
+  private nextItem = 0;
+  private respawning = new Set<string>();
   private nextPlayer = 1;
 
   onCreate() {
@@ -59,10 +83,26 @@ export class Arena extends Room {
       runtime.targetZ = clamp(Number(target.z) || 0, 0, WORLD_H);
       runtime.hasTarget = true;
       runtime.running = Boolean(target.run);
+      runtime.pending = undefined;
     });
     this.onMessage("fire", (client, aim: number) => this.fire(client.sessionId, Number(aim) || 0));
     this.onMessage("slash", (client, aim: number) => this.slash(client.sessionId, Number(aim) || 0));
     this.onMessage("bolt", (client, aim: number) => this.bolt(client.sessionId, Number(aim) || 0));
+    this.onMessage("interact", (client, id: string) => this.interact(client.sessionId, String(id)));
+    this.onMessage("equip", (client, kind: string) => {
+      const player = this.state.players.get(client.sessionId);
+
+      if (player && kind in WEAPONS && player.inventory.includes(kind)) player.weapon = kind;
+    });
+    this.onMessage("use", (client, index: number) => this.useItem(client.sessionId, Number(index)));
+    for (const item of STARTING_ITEMS) this.placeItem(item.kind, SPAWN.x + item.x, SPAWN.y + item.z, true);
+    STARTING_CHESTS.forEach((position, index) => {
+      const chest = new Chest();
+
+      chest.x = SPAWN.x + position.x;
+      chest.z = SPAWN.y + position.z;
+      this.state.chests.set(`chest${index}`, chest);
+    });
     this.setSimulationInterval((dt) => this.step(dt), TICK_MS);
   }
 
@@ -95,13 +135,80 @@ export class Arena extends Room {
     this.runtime.delete(client.sessionId);
   }
 
+  private placeItem(kind: string, x: number, z: number, respawns: boolean) {
+    const item = new GroundItem();
+    const id = `item${this.nextItem++}`;
+
+    item.kind = kind;
+    item.x = clamp(x, 0, WORLD_W);
+    item.z = clamp(z, 0, WORLD_H);
+    this.state.items.set(id, item);
+    if (respawns) this.respawning.add(id);
+  }
+
+  private interact(playerId: string, targetId: string) {
+    const runtime = this.runtime.get(playerId);
+    const target = this.state.items.get(targetId) ?? this.state.chests.get(targetId);
+
+    if (!runtime || !target) return;
+    runtime.pending = targetId;
+    runtime.targetX = target.x;
+    runtime.targetZ = target.z;
+    runtime.hasTarget = true;
+  }
+
+  /** Runs when a hero reaches the thing it was sent to. */
+  private finishInteraction(player: Player, runtime: Runtime) {
+    const id = runtime.pending!;
+    const item = this.state.items.get(id);
+    const chest = this.state.chests.get(id);
+    const target = item ?? chest;
+
+    if (!target) {
+      runtime.pending = undefined;
+      return;
+    }
+    if (Math.hypot(player.x - target.x, player.z - target.z) > REACH) return;
+    runtime.pending = undefined;
+    runtime.hasTarget = false;
+
+    if (item && player.inventory.length < MAX_INVENTORY) {
+      const respawns = this.respawning.delete(id);
+
+      player.inventory.push(item.kind);
+      this.state.items.delete(id);
+      if (respawns) {
+        const { kind, x, z } = item;
+
+        this.clock.setTimeout(() => this.placeItem(kind, x, z, true), RESPAWN_MS);
+      }
+    }
+    if (chest && !chest.open) {
+      const angle = Math.random() * Math.PI * 2;
+      const loot = CHEST_LOOT[Math.floor(Math.random() * CHEST_LOOT.length)];
+
+      chest.open = true;
+      this.placeItem(loot, chest.x + Math.cos(angle) * 85, chest.z + 34 + Math.abs(Math.sin(angle)) * 50, false);
+      this.clock.setTimeout(() => (chest.open = false), CHEST_RESET_MS);
+    }
+  }
+
+  private useItem(id: string, index: number) {
+    const player = this.state.players.get(id);
+
+    if (!player || player.inventory[index] !== "potion_mana") return;
+    player.inventory.splice(index, 1);
+    player.mana = Math.min(MANA_MAX, player.mana + POTION_MANA);
+  }
+
   private fire(id: string, aim: number) {
     const player = this.state.players.get(id);
     const runtime = this.runtime.get(id);
     const now = this.clock.currentTime;
 
-    if (!player || !runtime || now - runtime.lastShot < SHOT_COOLDOWN_MS) return;
+    if (!player || !runtime || now - runtime.lastShot < SHOT_COOLDOWN_MS || player.mana < FIRE_COST) return;
     runtime.lastShot = now;
+    player.mana -= FIRE_COST;
     player.aim = aim;
 
     const shot = new Shot();
@@ -122,7 +229,10 @@ export class Arena extends Room {
     const runtime = this.runtime.get(id);
     const now = this.clock.currentTime;
 
-    if (!player || !runtime || now - runtime.lastSlash < SLASH_COOLDOWN_MS) return;
+    if (!player || !runtime) return;
+    const weapon = WEAPONS[player.weapon] ?? WEAPONS.sword;
+
+    if (now - runtime.lastSlash < weapon.cooldown) return;
     runtime.lastSlash = now;
     player.aim = aim;
     this.broadcast("slash", { id });
@@ -132,11 +242,11 @@ export class Arena extends Room {
       const dx = other.x - player.x;
       const dz = other.z - player.z;
 
-      if (otherId === id || !otherRuntime || Math.hypot(dx, dz) > SLASH_RANGE) return;
+      if (otherId === id || !otherRuntime || Math.hypot(dx, dz) > weapon.range) return;
       if (angleDifference(Math.atan2(dx, dz), aim) > SLASH_ARC) return;
       player.hits++;
-      otherRuntime.pushX += Math.sin(aim) * SLASH_KNOCKBACK;
-      otherRuntime.pushZ += Math.cos(aim) * SLASH_KNOCKBACK * DEPTH_SCALE;
+      otherRuntime.pushX += Math.sin(aim) * weapon.knockback;
+      otherRuntime.pushZ += Math.cos(aim) * weapon.knockback * DEPTH_SCALE;
       this.broadcast("hit", { id: otherId });
     });
   }
@@ -147,8 +257,9 @@ export class Arena extends Room {
     const runtime = this.runtime.get(id);
     const now = this.clock.currentTime;
 
-    if (!player || !runtime || now - runtime.lastBolt < BOLT_COOLDOWN_MS) return;
+    if (!player || !runtime || now - runtime.lastBolt < BOLT_COOLDOWN_MS || player.mana < BOLT_COST) return;
     runtime.lastBolt = now;
+    player.mana -= BOLT_COST;
     player.aim = aim;
 
     const directionX = Math.sin(aim);
@@ -201,6 +312,9 @@ export class Arena extends Room {
   private stepPlayer(player: Player, runtime: Runtime, dt: number) {
     let moveX = 0;
     let moveZ = 0;
+
+    player.mana = Math.min(MANA_MAX, player.mana + MANA_REGEN * dt);
+    if (runtime.pending) this.finishInteraction(player, runtime);
 
     if (runtime.hasTarget) {
       const dx = runtime.targetX - player.x;

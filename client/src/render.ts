@@ -18,6 +18,7 @@ export type PlayerView = {
   moving: boolean;
   hue: number;
   name: string;
+  weapon: string;
   isSelf: boolean;
   running: boolean;
   walkTime: number;
@@ -29,6 +30,8 @@ type Particle = { x: number; y: number; vx: number; vy: number; life: number; ma
 
 export type Camera = { x: number; y: number; zoom: number };
 
+export type Pickable = { id: string; sprite: string; x: number; y: number };
+
 function loadImage(url: string) {
   const image = new Image();
 
@@ -36,25 +39,26 @@ function loadImage(url: string) {
   return image.decode().then(() => image);
 }
 
-export async function loadArt(base: string) {
-  const art = (name: string) => loadImage(`${base}art/${name}.webp?v=${__BUILD__}`);
-  const [ground, walkFront, walkBack, slashFront, slashBack, ...sprites] = await Promise.all([
-    art("ground"),
-    art("hero_walk_front"),
-    art("hero_walk_back"),
-    art("hero_slash_front"),
-    art("hero_slash_back"),
-    ...SPRITES.map((sprite) => art(sprite.name)),
-  ]);
+export const ITEM_KINDS = [
+  "axe", "chest", "chest_open", "potion_mana", "potion_health", "sword", "coins", "ring", "helmet", "pouch",
+];
+const HERO_SHEETS = ["walk_front", "walk_back", "slash_front", "slash_back"];
 
-  return {
-    ground,
-    walkFront,
-    walkBack,
-    slashFront,
-    slashBack,
-    sprites: new Map(SPRITES.map((sprite, index) => [sprite.name, sprites[index]])),
-  };
+export const artUrl = (base: string, name: string) => `${base}art/${name}.webp?v=${__BUILD__}`;
+
+export async function loadArt(base: string) {
+  const load = (names: string[]) =>
+    Promise.all(names.map(async (name) => [name, await loadImage(artUrl(base, name))] as const));
+  const sprites = new Map(
+    await load([
+      "ground",
+      ...SPRITES.map((sprite) => sprite.name),
+      ...ITEM_KINDS.map((kind) => `item_${kind}`),
+      ...HERO_SHEETS.flatMap((sheet) => [`hero_${sheet}`, `hero_axe_${sheet}`]),
+    ]),
+  );
+
+  return { sprites };
 }
 
 export type Art = Awaited<ReturnType<typeof loadArt>>;
@@ -220,9 +224,8 @@ export class Renderer {
     const dy = Math.cos(hero.aim);
     const facesCamera = dy >= 0;
     const slashing = hero.slashTime >= 0;
-    const sheet = slashing
-      ? facesCamera ? this.art.slashFront : this.art.slashBack
-      : facesCamera ? this.art.walkFront : this.art.walkBack;
+    const prefix = hero.weapon === "axe" ? "hero_axe" : "hero";
+    const sheet = this.art.sprites.get(`${prefix}_${slashing ? "slash" : "walk"}_${facesCamera ? "front" : "back"}`)!;
     const frame = slashing
       ? Math.min(SLASH_FRAMES - 1, Math.floor((hero.slashTime / SLASH_MS) * SLASH_FRAMES))
       : hero.moving ? Math.floor(hero.walkTime * (hero.running ? WALK_FPS * 1.7 : WALK_FPS)) % WALK_FRAMES : 0;
@@ -254,6 +257,21 @@ export class Renderer {
     context.fillText(hero.name, hero.x + 1, hero.y - 186);
     context.fillStyle = "#fff4dc";
     context.fillText(hero.name, hero.x, hero.y - 187);
+  }
+
+  private drawPickable(item: Pickable, hovered: boolean) {
+    const context = this.context;
+    const image = this.art.sprites.get(item.sprite)!;
+
+    this.drawShadow(item.x, item.y, image.width * 0.42, image.height * 0.16, 0.3);
+    if (hovered) {
+      context.strokeStyle = "rgba(255,236,150,0.95)";
+      context.lineWidth = 3;
+      context.beginPath();
+      context.ellipse(item.x, item.y, image.width * 0.6, image.height * 0.3, 0, 0, Math.PI * 2);
+      context.stroke();
+    }
+    context.drawImage(image, item.x - image.width / 2, item.y - image.height + 8);
   }
 
   private drawFireball(x: number, y: number) {
@@ -320,7 +338,14 @@ export class Renderer {
     context.fillRect(0, 0, width, height);
   }
 
-  draw(camera: Camera, heroes: PlayerView[], shots: { x: number; y: number }[], dt: number) {
+  draw(
+    camera: Camera,
+    heroes: PlayerView[],
+    shots: { x: number; y: number }[],
+    pickables: Pickable[],
+    hovered: string | undefined,
+    dt: number,
+  ) {
     const context = this.context;
     const scale = this.viewScale(camera);
 
@@ -328,12 +353,13 @@ export class Renderer {
     context.setTransform(scale, 0, 0, scale, this.canvas.width / 2 - camera.x * scale, this.canvas.height / 2 - camera.y * scale);
     context.fillStyle = "#3a4322";
     context.fillRect(camera.x - 4096, camera.y - 4096, 8192, 8192);
-    context.drawImage(this.art.ground, 0, 0, WORLD_W, WORLD_H);
+    context.drawImage(this.art.sprites.get("ground")!, 0, 0, WORLD_W, WORLD_H);
     this.drawMarker(dt);
 
     /* Painter's order: whatever stands lower on the map is drawn later */
     const items = [
       ...OBJECTS.map((object) => ({ y: object.y, draw: () => this.drawObject(object, heroes) })),
+      ...pickables.map((item) => ({ y: item.y, draw: () => this.drawPickable(item, item.id === hovered) })),
       ...heroes.map((hero) => ({ y: hero.y, draw: () => this.drawHero(hero) })),
       ...shots.map((shot) => ({ y: shot.y, draw: () => this.drawFireball(shot.x, shot.y) })),
     ].sort((a, b) => a.y - b.y);

@@ -25,7 +25,7 @@ Each branch runs in its own Docker container with no access to the host, the LAN
 
 ## Controls
 
-Left click walks, double click runs, right click swings the sword, holding right click casts lightning, space throws a fireball, and the wheel zooms.
+Left click walks or picks things up, double click runs, right click swings the sword, holding right click casts lightning, space throws a fireball, M opens the inventory, and the wheel zooms.
 
 ## Where things live
 

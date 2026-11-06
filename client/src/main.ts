@@ -1,6 +1,6 @@
 import { Client, type Room } from "@colyseus/sdk";
 import { SPAWN } from "../../shared/forest.ts";
-import { type Camera, type PlayerView, Renderer, loadArt } from "./render.ts";
+import { type Camera, type Pickable, type PlayerView, Renderer, artUrl, loadArt } from "./render.ts";
 
 type PlayerState = {
   name: string;
@@ -11,15 +11,29 @@ type PlayerState = {
   moving: boolean;
   running: boolean;
   hits: number;
+  mana: number;
+  weapon: string;
+  inventory: string[];
 };
 type ShotState = { x: number; z: number };
+type GroundState = { kind: string; x: number; z: number };
+type ChestState = { x: number; z: number; open: boolean };
 
 const ZOOM_MIN = 0.45;
 const ZOOM_MAX = 1.25;
 const DOUBLE_CLICK_MS = 320;
 const HOLD_MS = 280;
 const BOLT_REPEAT_MS = 560;
+const PICK_RADIUS = 58;
+const ITEM_NAMES: Record<string, string> = {
+  sword: "Sword", axe: "Battle axe", potion_mana: "Mana potion", coins: "Gold coins",
+  ring: "Gold ring", helmet: "Helmet", pouch: "Leather pouch",
+};
 const hud = document.getElementById("hud")!;
+const manaFill = document.getElementById("mana-fill")!;
+const panel = document.getElementById("panel")!;
+const panelHint = document.getElementById("panel-hint")!;
+const slots = document.getElementById("slots")!;
 const canvas = document.createElement("canvas");
 
 const base = import.meta.env.BASE_URL;
@@ -39,6 +53,9 @@ const camera: Camera = { x: SPAWN.x, y: SPAWN.y, zoom: 0.8 };
 const views = new Map<string, PlayerView>();
 const pointer = { x: innerWidth / 2, y: innerHeight / 2 };
 let cameraReady = false;
+let hovered: string | undefined;
+let pickables: Pickable[] = [];
+let shownInventory = "";
 let lastLeftClick = -Infinity;
 let casting = false;
 let holdTimer: ReturnType<typeof setTimeout> | undefined;
@@ -64,6 +81,7 @@ function updateView(id: string, player: PlayerState, dt: number) {
       aim: player.aim,
       moving: false,
       running: false,
+      weapon: player.weapon,
       hue: player.hue,
       name: player.name,
       isSelf: id === room.sessionId,
@@ -81,6 +99,7 @@ function updateView(id: string, player: PlayerState, dt: number) {
   view.aim = player.aim;
   view.moving = player.moving;
   view.running = player.running;
+  view.weapon = player.weapon;
   view.walkTime = player.moving ? view.walkTime + dt : 0;
   view.flash = Math.max(0, view.flash - dt * 4);
   if (view.slashTime >= 0) {
@@ -95,7 +114,7 @@ function updateHud(players: Map<string, PlayerState>) {
   players.forEach((player, id) => {
     rows.push(`${id === room.sessionId ? "<b>you</b> " : ""}${player.name}: ${player.hits}`);
   });
-  hud.innerHTML = `${rows.join("<br>")}<br><br>left click walk · double click run · right click sword · hold right lightning · space fireball · wheel zoom`;
+  hud.innerHTML = `${rows.join("<br>")}<br><br>left click walk or pick up · double click run · right click attack · hold right lightning · space fireball · M inventory · wheel zoom`;
 }
 
 addEventListener("contextmenu", (event) => event.preventDefault());
@@ -103,6 +122,62 @@ addEventListener("pointermove", (event) => {
   pointer.x = event.clientX;
   pointer.y = event.clientY;
 });
+function pickableAt(screenX: number, screenY: number) {
+  const target = renderer.toWorld(camera, screenX, screenY);
+  let best: Pickable | undefined;
+  let bestDistance = PICK_RADIUS;
+
+  for (const item of pickables) {
+    const distance = Math.hypot(item.x - target.x, item.y - 20 - target.y);
+
+    if (distance < bestDistance) {
+      best = item;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function renderInventory(player: PlayerState) {
+  const key = `${player.weapon}|${[...player.inventory].join(",")}`;
+
+  if (key === shownInventory) return;
+  shownInventory = key;
+  slots.replaceChildren();
+  [...player.inventory].forEach((kind, index) => {
+    const slot = document.createElement("button");
+    const icon = document.createElement("img");
+    const isWeapon = kind === "sword" || kind === "axe";
+    const usable = isWeapon || kind === "potion_mana";
+
+    slot.type = "button";
+    slot.className = "slot";
+    slot.title = ITEM_NAMES[kind] ?? kind;
+    slot.setAttribute("aria-label", slot.title);
+    slot.classList.toggle("usable", usable);
+    slot.classList.toggle("equipped", isWeapon && kind === player.weapon);
+    icon.src = artUrl(base, `icon_${kind}`);
+    icon.alt = "";
+    slot.appendChild(icon);
+    if (isWeapon) slot.addEventListener("click", () => room.send("equip", kind));
+    if (kind === "potion_mana") slot.addEventListener("click", () => room.send("use", index));
+    slots.appendChild(slot);
+  });
+  panelHint.textContent = `Equipped: ${ITEM_NAMES[player.weapon]}. Click a weapon to swap, or a potion to drink. M closes.`;
+}
+
+function collectPickables() {
+  const items: Map<string, GroundState> = room.state.items;
+  const chests: Map<string, ChestState> = room.state.chests;
+  const list: Pickable[] = [];
+
+  items.forEach((item, id) => list.push({ id, sprite: `item_${item.kind}`, x: item.x, y: item.z }));
+  chests.forEach((chest, id) => {
+    list.push({ id, sprite: chest.open ? "item_chest_open" : "item_chest", x: chest.x, y: chest.z });
+  });
+  return list;
+}
+
 function moveToPointer(run: boolean) {
   const target = renderer.toWorld(camera, pointer.x, pointer.y);
 
@@ -117,11 +192,18 @@ function stopHolding() {
 }
 
 addEventListener("pointerdown", (event) => {
+  if (event.target !== canvas) return;
   pointer.x = event.clientX;
   pointer.y = event.clientY;
   if (event.button === 0) {
-    moveToPointer(event.timeStamp - lastLeftClick < DOUBLE_CLICK_MS);
-    lastLeftClick = event.timeStamp;
+    const item = pickableAt(pointer.x, pointer.y);
+
+    if (item) {
+      room.send("interact", item.id);
+    } else {
+      moveToPointer(event.timeStamp - lastLeftClick < DOUBLE_CLICK_MS);
+      lastLeftClick = event.timeStamp;
+    }
   }
   if (event.button === 2) {
     casting = false;
@@ -140,6 +222,8 @@ addEventListener("pointerup", (event) => {
 addEventListener("blur", stopHolding);
 addEventListener("keydown", (event) => {
   if (event.code === "Space" && !event.repeat) room.send("fire", aimFromPointer());
+  if (event.code === "KeyM" && !event.repeat) panel.hidden = !panel.hidden;
+  if (event.code === "Escape") panel.hidden = true;
 });
 addEventListener("wheel", (event) => {
   camera.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, camera.zoom * (event.deltaY > 0 ? 0.9 : 1.1)));
@@ -168,7 +252,7 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 
   /* The first state patch can arrive a moment after joining */
-  if (!room.state?.players || !room.state?.shots) return;
+  if (!room.state?.players || !room.state?.shots || !room.state?.items) return;
 
   const dt = Math.min((now - lastFrame) / 1000, 0.1);
   const players: Map<string, PlayerState> = room.state.players;
@@ -187,6 +271,17 @@ function frame(now: number) {
     renderer.trail(shot.x, shot.z - 60);
   });
 
+  pickables = collectPickables();
+  hovered = pickableAt(pointer.x, pointer.y)?.id;
+  canvas.style.cursor = hovered ? "pointer" : "";
+
+  const selfState = players.get(room.sessionId);
+
+  if (selfState) {
+    manaFill.style.width = `${selfState.mana}%`;
+    renderInventory(selfState);
+  }
+
   const self = views.get(room.sessionId);
 
   if (self) {
@@ -197,7 +292,7 @@ function frame(now: number) {
     cameraReady = true;
   }
   renderer.clampCamera(camera);
-  renderer.draw(camera, [...views.values()], shotViews, dt);
+  renderer.draw(camera, [...views.values()], shotViews, pickables, hovered, dt);
   updateHud(players);
 }
 

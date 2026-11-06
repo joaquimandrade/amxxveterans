@@ -1,8 +1,8 @@
 """Cuts the painted source sheets into game sprites and places the forest.
 
 Usage: build_art.py SOURCE_DIR REPO_DIR
-Sources: ground.png, objects2.png, walk_front.png, walk_back.png,
-slash_front.png, slash_back.png.
+Sources: ground.png, objects2.png, items.png, and walk_front, walk_back,
+slash_front and slash_back, each also with an axe_ prefix.
 """
 import json
 import random
@@ -82,16 +82,58 @@ def hero_sheet(name, out, count, scale):
 
 
 def hero():
-    standing = frames_of("walk_front.png", 6)[0][1]
-    scale = HERO_HEIGHT / standing.shape[0]
+    for prefix, out in (("", "hero"), ("axe_", "hero_axe")):
+        standing = frames_of(f"{prefix}walk_front.png", 6)[0][1]
+        scale = HERO_HEIGHT / standing.shape[0]
 
-    for name, out, count in (
-        ("walk_front.png", "hero_walk_front", 6),
-        ("walk_back.png", "hero_walk_back", 6),
-        ("slash_front.png", "hero_slash_front", 5),
-        ("slash_back.png", "hero_slash_back", 5),
-    ):
-        hero_sheet(name, out, count, scale)
+        for name, sheet, count in (
+            ("walk_front", "walk_front", 6),
+            ("walk_back", "walk_back", 6),
+            ("slash_front", "slash_front", 5),
+            ("slash_back", "slash_back", 5),
+        ):
+            hero_sheet(f"{prefix}{name}.png", f"{out}_{sheet}", count, scale)
+
+
+# Item centres on a 1376 by 386 preview, and the height each one is drawn at.
+ITEMS = {
+    "axe": (180, 180, 84), "chest": (540, 95, 96), "chest_open": (930, 105, 112),
+    "potion_mana": (1245, 70, 52), "potion_health": (1245, 185, 52), "sword": (490, 215, 30),
+    "coins": (515, 300, 52), "ring": (810, 285, 44), "helmet": (1030, 290, 60), "pouch": (1250, 300, 56),
+}
+
+
+def items():
+    rgb = load("items.png")
+    pink = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
+    mask = ndimage.binary_opening(pink < 40, iterations=2)
+    labels, found = ndimage.label(mask)
+    sizes = ndimage.sum(np.ones_like(labels), labels, range(1, found + 1))
+    factor_x, factor_y = rgb.shape[1] / 1376, rgb.shape[0] / 386
+    areas = ndimage.find_objects(labels)
+
+    for name, (x, y, height) in ITEMS.items():
+        best, best_distance = None, None
+        for index, area in enumerate(areas):
+            if sizes[index] < 1500:
+                continue
+            center_y = (area[0].start + area[0].stop) / 2 / factor_y
+            center_x = (area[1].start + area[1].stop) / 2 / factor_x
+            distance = (center_x - x) ** 2 + (center_y - y) ** 2
+            if best is None or distance < best_distance:
+                best, best_distance = index, distance
+        area = areas[best]
+        alpha = ndimage.gaussian_filter((labels[area] == best + 1).astype(np.float32), 1)
+        alpha *= np.clip(1 - (pink[area] - 18) / 26, 0, 1)
+        pixels = np.dstack([rgb[area], alpha * 255]).astype(np.uint8)
+        sprite = Image.fromarray(pixels, "RGBA")
+        icon = sprite.copy()
+        icon.thumbnail((128, 128), Image.LANCZOS)
+        icon.save(f"{ART}/icon_{name}.webp", quality=88, method=6)
+        scale = height / sprite.height
+        sprite.resize((max(1, round(sprite.width * scale)), height), Image.LANCZOS).save(
+            f"{ART}/item_{name}.webp", quality=88, method=6
+        )
 
 
 # Object boxes in the source sheet, as left, top, right, bottom on a 1100 wide preview.
@@ -180,6 +222,7 @@ def place(sprites, height, greenness):
 
 sprites = objects()
 hero()
+items()
 height, greenness = ground()
 spawn, placed = place(sprites, height, greenness)
 
