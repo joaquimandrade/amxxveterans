@@ -64,6 +64,8 @@ let currentArea = "city";
 let fade = 0;
 let lastLeftClick = -Infinity;
 let casting = false;
+let rightPressed = false;
+let lastTouch = -Infinity;
 let holdTimer: ReturnType<typeof setTimeout> | undefined;
 let holdRepeat: ReturnType<typeof setInterval> | undefined;
 let lastFrame = performance.now();
@@ -210,34 +212,58 @@ function stopHolding() {
   holdTimer = holdRepeat = undefined;
 }
 
+function startRightPress() {
+  casting = false;
+  rightPressed = true;
+  holdTimer = setTimeout(() => {
+    casting = true;
+    room.send("bolt", aimFromPointer());
+    holdRepeat = setInterval(() => room.send("bolt", aimFromPointer()), BOLT_REPEAT_MS);
+  }, HOLD_MS);
+}
+
+function endRightPress() {
+  if (!rightPressed) return;
+  rightPressed = false;
+  stopHolding();
+  if (!casting) room.send("slash", aimFromPointer());
+}
+
+function leftPress(timeStamp: number, allowRun: boolean) {
+  const item = pickableAt(pointer.x, pointer.y);
+
+  if (item) {
+    room.send("interact", item.id);
+  } else {
+    moveToPointer(allowRun && timeStamp - lastLeftClick < DOUBLE_CLICK_MS);
+    lastLeftClick = timeStamp;
+  }
+}
+
+/* On a phone, a second quick tap acts as the right mouse button, so holding it casts lightning. */
+function touchPress(timeStamp: number) {
+  const self = views.get(room.sessionId);
+
+  if (timeStamp - lastTouch < DOUBLE_CLICK_MS) {
+    lastTouch = -Infinity;
+    if (self) room.send("move", { x: self.x, z: self.y });
+    startRightPress();
+  } else {
+    lastTouch = timeStamp;
+    leftPress(timeStamp, false);
+  }
+}
+
 addEventListener("pointerdown", (event) => {
   if (event.target !== canvas) return;
   pointer.x = event.clientX;
   pointer.y = event.clientY;
-  if (event.button === 0) {
-    const item = pickableAt(pointer.x, pointer.y);
-
-    if (item) {
-      room.send("interact", item.id);
-    } else {
-      moveToPointer(event.timeStamp - lastLeftClick < DOUBLE_CLICK_MS);
-      lastLeftClick = event.timeStamp;
-    }
-  }
-  if (event.button === 2) {
-    casting = false;
-    holdTimer = setTimeout(() => {
-      casting = true;
-      room.send("bolt", aimFromPointer());
-      holdRepeat = setInterval(() => room.send("bolt", aimFromPointer()), BOLT_REPEAT_MS);
-    }, HOLD_MS);
-  }
+  if (event.pointerType === "touch") touchPress(event.timeStamp);
+  else if (event.button === 0) leftPress(event.timeStamp, true);
+  else if (event.button === 2) startRightPress();
 });
-addEventListener("pointerup", (event) => {
-  if (event.button !== 2) return;
-  stopHolding();
-  if (!casting) room.send("slash", aimFromPointer());
-});
+addEventListener("pointerup", endRightPress);
+addEventListener("pointercancel", endRightPress);
 addEventListener("blur", stopHolding);
 addEventListener("keydown", (event) => {
   if (event.code === "Space" && !event.repeat) room.send("fire", aimFromPointer());

@@ -2,11 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>AMXX Veterans</title>
     <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #0c0e18; }
-      canvas { display: block; width: 100vw; height: 100vh; }
+      html, body { margin: 0; touch-action: none; user-select: none; -webkit-user-select: none; height: 100%; overflow: hidden; background: #0c0e18; }
+      canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
       #hud {
         position: fixed; top: 12px; left: 14px; color: #f3e6d0; pointer-events: none;
         font: 14px/1.5 ui-monospace, Menlo, Consolas, monospace; text-shadow: 0 1px 3px #000;
