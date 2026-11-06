@@ -5,9 +5,11 @@ declare const __BUILD__: string;
 const CELL_W = 340;
 const CELL_H = 300;
 const FEET_Y = 282;
-const WALK_FRAMES = 6;
+const WALK_FRAMES = 8;
 const SLASH_FRAMES = 5;
-const WALK_FPS = 11;
+/* Distance covered by one full walk cycle, so the feet do not slide */
+const WALK_STRIDE = 150;
+const RUN_STRIDE = 215;
 const SLASH_MS = 420;
 const MAX_PARTICLES = 500;
 
@@ -21,7 +23,7 @@ export type PlayerView = {
   weapon: string;
   isSelf: boolean;
   running: boolean;
-  walkTime: number;
+  walkDistance: number;
   slashTime: number;
   flash: number;
 };
@@ -42,7 +44,7 @@ function loadImage(url: string) {
 export const ITEM_KINDS = [
   "axe", "chest", "chest_open", "potion_mana", "potion_health", "sword", "coins", "ring", "helmet", "pouch",
 ];
-const HERO_SHEETS = ["walk_front", "walk_back", "slash_front", "slash_back"];
+const HERO_SHEETS = ["idle_front", "idle_back", "walk_front", "walk_back", "slash_front", "slash_back"];
 
 export const artUrl = (base: string, name: string) => `${base}art/${name}.webp?v=${__BUILD__}`;
 
@@ -225,10 +227,12 @@ export class Renderer {
     const facesCamera = dy >= 0;
     const slashing = hero.slashTime >= 0;
     const prefix = hero.weapon === "axe" ? "hero_axe" : "hero";
-    const sheet = this.art.sprites.get(`${prefix}_${slashing ? "slash" : "walk"}_${facesCamera ? "front" : "back"}`)!;
+    const action = slashing ? "slash" : hero.moving ? "walk" : "idle";
+    const sheet = this.art.sprites.get(`${prefix}_${action}_${facesCamera ? "front" : "back"}`)!;
+    const stride = hero.running ? RUN_STRIDE : WALK_STRIDE;
     const frame = slashing
       ? Math.min(SLASH_FRAMES - 1, Math.floor((hero.slashTime / SLASH_MS) * SLASH_FRAMES))
-      : hero.moving ? Math.floor(hero.walkTime * (hero.running ? WALK_FPS * 1.7 : WALK_FPS)) % WALK_FRAMES : 0;
+      : hero.moving ? Math.floor((hero.walkDistance / stride) * WALK_FRAMES) % WALK_FRAMES : 0;
 
     this.drawShadow(hero.x, hero.y, 46, 16, 0.32);
 

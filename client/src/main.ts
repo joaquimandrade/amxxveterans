@@ -25,6 +25,7 @@ const DOUBLE_CLICK_MS = 320;
 const HOLD_MS = 280;
 const BOLT_REPEAT_MS = 560;
 const PICK_RADIUS = 58;
+const DEPTH_SCALE = 0.72;
 const ITEM_NAMES: Record<string, string> = {
   sword: "Sword", axe: "Battle axe", potion_mana: "Mana potion", coins: "Gold coins",
   ring: "Gold ring", helmet: "Helmet", pouch: "Leather pouch",
@@ -85,7 +86,7 @@ function updateView(id: string, player: PlayerState, dt: number) {
       hue: player.hue,
       name: player.name,
       isSelf: id === room.sessionId,
-      walkTime: 0,
+      walkDistance: 0,
       slashTime: -1,
       flash: 0,
     };
@@ -94,13 +95,16 @@ function updateView(id: string, player: PlayerState, dt: number) {
 
   const follow = 1 - Math.exp(-18 * dt);
 
-  view.x += (player.x - view.x) * follow;
-  view.y += (player.z - view.y) * follow;
+  const stepX = (player.x - view.x) * follow;
+  const stepY = (player.z - view.y) * follow;
+
+  view.x += stepX;
+  view.y += stepY;
+  view.walkDistance = player.moving ? view.walkDistance + Math.hypot(stepX, stepY / DEPTH_SCALE) : 0;
   view.aim = player.aim;
   view.moving = player.moving;
   view.running = player.running;
   view.weapon = player.weapon;
-  view.walkTime = player.moving ? view.walkTime + dt : 0;
   view.flash = Math.max(0, view.flash - dt * 4);
   if (view.slashTime >= 0) {
     view.slashTime += dt * 1000;

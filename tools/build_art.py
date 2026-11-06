@@ -1,8 +1,9 @@
 """Cuts the painted source sheets into game sprites and places the forest.
 
 Usage: build_art.py SOURCE_DIR REPO_DIR
-Sources: ground.png, objects2.png, items.png, and walk_front, walk_back,
-slash_front and slash_back, each also with an axe_ prefix.
+Sources: ground.png, objects2.png, items.png, walk_front, walk_back,
+slash_front and slash_back (each also with an axe_ prefix), and the walk
+cycles pw_front, pw_back, pa_front and pa_back.
 """
 import json
 import random
@@ -66,10 +67,11 @@ def frames_of(name, count):
     return frames
 
 
-def hero_sheet(name, out, count, scale):
-    sheet = Image.new("RGBA", (CELL_W * count, CELL_H), (0, 0, 0, 0))
+def hero_sheet(name, out, count, scale, keep=None):
+    keep = keep or count
+    sheet = Image.new("RGBA", (CELL_W * keep, CELL_H), (0, 0, 0, 0))
 
-    for index, (rgb, mask, center) in enumerate(frames_of(name, count)):
+    for index, (rgb, mask, center) in enumerate(frames_of(name, count)[:keep]):
         pixels = np.dstack([rgb, mask * 255]).astype(np.uint8)
         sprite = Image.fromarray(pixels, "RGBA")
         size = (max(1, round(sprite.width * scale)), max(1, round(sprite.height * scale)))
@@ -81,18 +83,64 @@ def hero_sheet(name, out, count, scale):
     sheet.save(f"{ART}/{out}.webp", quality=88, method=6)
 
 
+def grid_frames(name):
+    """Walk sheets are a 4 by 2 grid painted over motion-captured poses."""
+    rgb = load(name)
+    alpha = hero_alpha(rgb)
+    height, width = alpha.shape
+    frames = []
+
+    for index in range(8):
+        left, top = (index % 4) * width // 4, (index // 4) * height // 2
+        right, bottom = left + width // 4, top + height // 2
+        cell = alpha[top:bottom, left:right] > 0.5
+        pieces, _ = ndimage.label(ndimage.binary_closing(cell, iterations=2))
+        sizes = np.bincount(pieces.ravel())
+        sizes[0] = 0
+        main = pieces == sizes.argmax()
+        ys, xs = np.where(main)
+        top_y, bottom_y = ys.min(), ys.max() + 1
+        torso = (ys > top_y + (bottom_y - top_y) * 0.15) & (ys < top_y + (bottom_y - top_y) * 0.5)
+        frames.append((rgb[top:bottom, left:right], main * alpha[top:bottom, left:right], float(np.median(xs[torso])), bottom_y))
+    return frames
+
+
+def walk_sheet(name, out, scale, replace_first):
+    frames = grid_frames(name)
+    if replace_first:
+        frames[0] = frames[4]
+    baseline = np.median([frame[3] for frame in frames])
+    sheet = Image.new("RGBA", (CELL_W * 8, CELL_H), (0, 0, 0, 0))
+
+    for index, (rgb, mask, center, _) in enumerate(frames):
+        pixels = np.dstack([rgb, mask * 255]).astype(np.uint8)
+        sprite = Image.fromarray(pixels, "RGBA")
+        sprite = sprite.resize((round(sprite.width * scale), round(sprite.height * scale)), Image.LANCZOS)
+        x = round(CELL_W * index + CELL_W / 2 - center * scale)
+        y = round(FEET_Y - baseline * scale)
+        sheet.paste(sprite, (x, y), sprite)
+    sheet.save(f"{ART}/{out}.webp", quality=88, method=6)
+
+
 def hero():
-    for prefix, out in (("", "hero"), ("axe_", "hero_axe")):
-        standing = frames_of(f"{prefix}walk_front.png", 6)[0][1]
-        scale = HERO_HEIGHT / standing.shape[0]
+    standing = grid_frames("pw_front.png")[0]
+    ys = np.where(standing[1] > 0.5)[0]
+    walk_scale = HERO_HEIGHT / (ys.max() - ys.min())
+
+    for walk_prefix, prefix, out in (("pw", "", "hero"), ("pa", "axe_", "hero_axe")):
+        walk_sheet(f"{walk_prefix}_front.png", f"{out}_walk_front", walk_scale, False)
+        walk_sheet(f"{walk_prefix}_back.png", f"{out}_walk_back", walk_scale, True)
+
+        scale = HERO_HEIGHT / frames_of(f"{prefix}walk_front.png", 6)[0][1].shape[0]
 
         for name, sheet, count in (
-            ("walk_front", "walk_front", 6),
-            ("walk_back", "walk_back", 6),
+            ("walk_front", "idle_front", 1),
+            ("walk_back", "idle_back", 1),
             ("slash_front", "slash_front", 5),
             ("slash_back", "slash_back", 5),
         ):
-            hero_sheet(f"{prefix}{name}.png", f"{out}_{sheet}", count, scale)
+            source = 6 if count == 1 else count
+            hero_sheet(f"{prefix}{name}.png", f"{out}_{sheet}", source, scale, count)
 
 
 # Item centres on a 1376 by 386 preview, and the height each one is drawn at.

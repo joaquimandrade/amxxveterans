@@ -3,8 +3,8 @@ import { OBJECTS, SPAWN, WORLD_H, WORLD_W } from "../../shared/forest.ts";
 import { ArenaState, Chest, GroundItem, Player, Shot } from "./state.ts";
 
 const TICK_MS = 33;
-const WALK_SPEED = 240;
-const RUN_SPEED = 430;
+const WALK_SPEED = 190;
+const RUN_SPEED = 360;
 const ARRIVE_DISTANCE = 8;
 const PLAYER_RADIUS = 22;
 /* The ground is seen at an angle, so vertical distances look shorter */
