@@ -235,6 +235,20 @@ def mansion():
     sprite.resize((round(sprite.width * scale), 640), Image.LANCZOS).save(f"{ART}/mansion.webp", quality=88, method=6)
 
 
+def woman():
+    rgb = load("city/woman.png")
+    pink = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
+    labels, found = ndimage.label(ndimage.binary_opening(pink < 70))
+    sizes = ndimage.sum(np.ones_like(labels), labels, range(1, found + 1))
+    label = int(np.argmax(sizes)) + 1
+    area = ndimage.find_objects(labels)[label - 1]
+    alpha = ndimage.gaussian_filter((labels[area] == label).astype(np.float32), 0.8)
+    alpha *= np.clip(1 - (pink[area] - 40) / 45, 0, 1)
+    sprite = Image.fromarray(np.dstack([rgb[area], alpha * 255]).astype(np.uint8), "RGBA")
+    scale = 170 / sprite.height
+    sprite.resize((round(sprite.width * scale), 170), Image.LANCZOS).save(f"{ART}/npc_woman.webp", quality=90, method=6)
+
+
 def ground():
     """Mirrors the street corner into a grid, so the sidewalks form city blocks."""
     source = Image.open(f"{SOURCE}/city/ground.png").convert("RGB")
@@ -320,6 +334,7 @@ def place(sprites, width, height, tile_w, tile_h):
 
 sprites = objects()
 mansion()
+woman()
 hero()
 items()
 world_width, height, tile_w, tile_h = ground()

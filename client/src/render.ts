@@ -1,4 +1,4 @@
-import { AREAS, HOTSPOTS, type Hotspot, MANSION } from "../../shared/areas.ts";
+import { AREAS, HOTSPOTS, type Hotspot, MANSION, NPCS } from "../../shared/areas.ts";
 import { OBJECTS, SPRITES } from "../../shared/forest.ts";
 
 declare const __BUILD__: string;
@@ -61,6 +61,7 @@ export async function loadArt(base: string) {
     await load([
       "ground",
       "mansion",
+      ...NPCS.map((npc) => npc.sprite),
       "room_hall",
       "room_upper",
       ...SPRITES.map((sprite) => sprite.name),
@@ -404,6 +405,17 @@ export class Renderer {
     }
   }
 
+  /** Still sprite with a slight breathing motion. */
+  private drawNpc(npc: (typeof NPCS)[number]) {
+    const context = this.context;
+    const image = this.art.sprites.get(npc.sprite)!;
+    const breath = 1 + Math.sin(this.time * 1.8 + npc.x) * 0.006;
+    const height = image.height * breath;
+
+    this.drawShadow(npc.x, npc.y, 38, 13, 0.34);
+    context.drawImage(image, npc.x - image.width / 2, npc.y - height + 4, image.width, height);
+  }
+
   private drawFireball(x: number, y: number) {
     const context = this.context;
     const pulse = 1 + Math.sin(this.time * 30) * 0.08;
@@ -581,6 +593,7 @@ export class Renderer {
       ...(isCity ? OBJECTS : []).map((object) => ({ y: object.y, draw: () => this.drawObject(object, heroes) })),
       ...(isCity ? [{ y: MANSION.y, draw: () => this.drawMansion(heroes) }] : []),
       ...pickables.map((item) => ({ y: item.y, draw: () => this.drawPickable(item, item.id === hovered) })),
+      ...NPCS.filter((npc) => npc.area === areaName).map((npc) => ({ y: npc.y, draw: () => this.drawNpc(npc) })),
       ...heroes.map((hero) => ({ y: hero.y, draw: () => this.drawHero(hero) })),
       ...shots.map((shot) => ({ y: shot.y, draw: () => this.drawFireball(shot.x, shot.y) })),
     ].sort((a, b) => a.y - b.y);

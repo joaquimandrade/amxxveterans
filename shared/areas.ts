@@ -42,6 +42,8 @@ const hallDoor = at(345, 350);
 const hallStairs = at(505, 318);
 const upperStairs = at(860, 470);
 
+export const NPCS = [{ sprite: "npc_woman", area: "upper", ...at(560, 395) }];
+
 export const AREAS: Record<string, Area> = {
   city: {
     width: WORLD_W,
@@ -62,7 +64,7 @@ export const AREAS: Record<string, Area> = {
     width: ROOM_W,
     height: ROOM_H,
     floor: room([[215, 375], [400, 295], [450, 230], [620, 285], [690, 325], [700, 380], [850, 455], [905, 470], [740, 585], [470, 450], [385, 490]]),
-    solids: [],
+    solids: [{ ...at(560, 395), radius: 26 }],
   },
 };
 
