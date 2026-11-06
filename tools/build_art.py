@@ -255,10 +255,13 @@ def ground():
     for room in ("hall", "upper"):
         painting = Image.open(f"{SOURCE}/city/{room}.png").convert("RGB").resize((1430, 798), Image.LANCZOS)
         pixels = np.asarray(painting).astype(np.float32)
-        backdrop = np.linalg.norm(pixels - pixels[4, 4], axis=2) < 26
-        labels, _ = ndimage.label(backdrop)
-        outside = labels == labels[4, 4]
-        pixels[ndimage.binary_dilation(outside, iterations=2)] = (10, 10, 16)
+        # The hall sits on flat grey. The upper room's backdrop is nearly as dark as
+        # its walls, so keying it would eat into the painting.
+        if room == "hall":
+            backdrop = np.linalg.norm(pixels - pixels[4, 4], axis=2) < 26
+            labels, _ = ndimage.label(backdrop)
+            outside = labels == labels[4, 4]
+            pixels[ndimage.binary_dilation(outside, iterations=2)] = (10, 10, 16)
         Image.fromarray(pixels.astype(np.uint8)).save(f"{ART}/room_{room}.webp", quality=84, method=6)
     return tile_w * 3, height, tile_w, tile_h
 
