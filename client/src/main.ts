@@ -65,7 +65,7 @@ let fade = 0;
 let lastLeftClick = -Infinity;
 let casting = false;
 let rightPressed = false;
-let lastTouch = -Infinity;
+const fingers = new Set<number>();
 let holdTimer: ReturnType<typeof setTimeout> | undefined;
 let holdRepeat: ReturnType<typeof setInterval> | undefined;
 let lastFrame = performance.now();
@@ -240,17 +240,15 @@ function leftPress(timeStamp: number, allowRun: boolean) {
   }
 }
 
-/* On a phone, a second quick tap acts as the right mouse button, so holding it casts lightning. */
+/* On a phone, a tap walks, a double tap runs, and a second finger acts as the right mouse button. */
 function touchPress(timeStamp: number) {
   const self = views.get(room.sessionId);
 
-  if (timeStamp - lastTouch < DOUBLE_CLICK_MS) {
-    lastTouch = -Infinity;
+  if (fingers.size >= 2) {
     if (self) room.send("move", { x: self.x, z: self.y });
     startRightPress();
   } else {
-    lastTouch = timeStamp;
-    leftPress(timeStamp, false);
+    leftPress(timeStamp, true);
   }
 }
 
@@ -258,12 +256,20 @@ addEventListener("pointerdown", (event) => {
   if (event.target !== canvas) return;
   pointer.x = event.clientX;
   pointer.y = event.clientY;
-  if (event.pointerType === "touch") touchPress(event.timeStamp);
+  if (event.pointerType === "touch") {
+    fingers.add(event.pointerId);
+    touchPress(event.timeStamp);
+  }
   else if (event.button === 0) leftPress(event.timeStamp, true);
   else if (event.button === 2) startRightPress();
 });
-addEventListener("pointerup", endRightPress);
-addEventListener("pointercancel", endRightPress);
+function pointerReleased(event: PointerEvent) {
+  fingers.delete(event.pointerId);
+  endRightPress();
+}
+
+addEventListener("pointerup", pointerReleased);
+addEventListener("pointercancel", pointerReleased);
 addEventListener("blur", stopHolding);
 addEventListener("keydown", (event) => {
   if (event.code === "Space" && !event.repeat) room.send("fire", aimFromPointer());
