@@ -1,11 +1,12 @@
-"""Cuts the painted source sheets into game sprites and places the forest.
+"""Cuts the painted source sheets into game sprites and places the city.
 
 Usage: build_art.py SOURCE_DIR REPO_DIR
-Sources: ground.png, objects2.png, items.png, walk_front, walk_back,
+Sources: city/ground.png, city/objects.png, items.png, walk_front, walk_back,
 slash_front and slash_back (each also with an axe_ prefix), and the walk
 cycles pw_front, pw_back, pa_front and pa_back.
 """
 import json
+import math
 import random
 import sys
 
@@ -184,100 +185,122 @@ def items():
         )
 
 
-# Object boxes in the source sheet, as left, top, right, bottom on a 1100 wide preview.
-OBJECT_BOXES = [
-    ("oak", 112, 5, 312, 258), ("oak", 383, 18, 568, 262), ("oak", 592, 12, 792, 268), ("oak", 842, 8, 1002, 267),
-    ("pine", 92, 268, 268, 592), ("pine", 296, 258, 448, 588), ("pine", 452, 328, 584, 588), ("pine", 586, 362, 698, 588),
-    ("bush", 722, 303, 866, 430), ("bush", 894, 300, 1032, 428), ("rock", 712, 460, 882, 585), ("rock", 884, 440, 1052, 598),
+# Order follows the sheet: name, drawn height, collision radius as a share of the width.
+OBJECT_KINDS = [
+    ("house", 480, 0.4), ("house", 500, 0.4), ("house", 480, 0.4), ("house", 500, 0.4),
+    ("tower", 590, 0.42), ("chapel", 500, 0.42), ("gate", 430, 0.42), ("tenement", 500, 0.42),
+    ("lamp", 235, 0), ("lamp", 235, 0), ("well", 130, 0.32), ("crates", 118, 0.34),
 ]
 
 
 def objects():
-    """The sheet has a pink haze behind the objects: key it out, then keep the main shape."""
-    rgb = load("objects2.png")
-    factor = rgb.shape[1] / 1100
-    target = {"oak": 340, "pine": 360, "bush": 120, "rock": 110}
+    rgb = load("city/objects.png")
+    pink = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
+    mask = ndimage.binary_opening(pink < 60, iterations=1)
+    labels, found = ndimage.label(mask)
+    sizes = ndimage.sum(np.ones_like(labels), labels, range(1, found + 1))
+    largest = sorted(np.argsort(sizes)[-12:] + 1)
+    areas = ndimage.find_objects(labels)
+    boxes = [(label, areas[label - 1]) for label in largest]
+    rows = sorted(boxes, key=lambda b: (b[1][0].start + b[1][0].stop) / 2)
+    ordered = []
+    for row in (rows[:4], rows[4:8], rows[8:]):
+        ordered += sorted(row, key=lambda b: b[1][1].start)
     sprites = []
 
-    for index, (kind, left, top, right, bottom) in enumerate(OBJECT_BOXES):
-        left, top, right, bottom = [round(v * factor) for v in (left, top, right, bottom)]
-        area = rgb[top:bottom, left:right]
-        red, green, blue = area[..., 0], area[..., 1], area[..., 2]
-        pink = np.minimum(red, blue) - green
-        solid = (pink < 12) & (blue < green * 1.02)
-        if kind == "rock":
-            solid = pink < 22
-        solid = ndimage.binary_opening(solid, iterations=2)
-        labels, found = ndimage.label(solid)
-        sizes = ndimage.sum(np.ones_like(labels), labels, range(1, found + 1))
-        main = labels == (np.argmax(sizes) + 1)
-        main = ndimage.binary_fill_holes(ndimage.binary_closing(main, iterations=3))
-        alpha = ndimage.gaussian_filter(ndimage.binary_erosion(main).astype(np.float32), 1.1)
-        alpha *= np.clip(1 - (pink - 14) / 22, 0, 1)
-        ys, xs = np.where(main)
-        box = (ys.min(), ys.max() + 1, xs.min(), xs.max() + 1)
-        pixels = np.dstack([area, alpha * 255])[box[0]:box[1], box[2]:box[3]].astype(np.uint8)
-        sprite = Image.fromarray(pixels, "RGBA")
-        scale = target[kind] / sprite.height
-        sprite = sprite.resize((round(sprite.width * scale), round(sprite.height * scale)), Image.LANCZOS)
-        name = f"{kind}{index}"
+    for index, (label, area) in enumerate(ordered):
+        kind, height, radius = OBJECT_KINDS[index]
+        alpha = ndimage.gaussian_filter((labels[area] == label).astype(np.float32), 0.9)
+        alpha *= np.clip(1 - (pink[area] - 30) / 40, 0, 1)
+        sprite = Image.fromarray(np.dstack([rgb[area], alpha * 255]).astype(np.uint8), "RGBA")
+        scale = height / sprite.height
+        sprite = sprite.resize((round(sprite.width * scale), height), Image.LANCZOS)
+        name = f"city_{kind}{index}"
         sprite.save(f"{ART}/{name}.webp", quality=88, method=6)
-        sprites.append({"name": name, "kind": kind, "w": sprite.width, "h": sprite.height})
+        sprites.append({"name": name, "kind": kind, "w": sprite.width, "h": sprite.height, "radius": round(sprite.width * radius)})
     return sprites
 
 
 def ground():
-    image = Image.open(f"{SOURCE}/ground.png").convert("RGB")
-    height = round(image.height * WORLD_W / image.width)
-    image = image.resize((WORLD_W, height), Image.LANCZOS)
-    image.save(f"{ART}/ground.webp", quality=82, method=6)
-    pixels = np.asarray(image.resize((WORLD_W // 8, height // 8), Image.BOX)).astype(np.float32)
-    return height, pixels[..., 1] / (pixels[..., 0] + 1)
+    """Mirrors the street corner into a grid, so the sidewalks form city blocks."""
+    source = Image.open(f"{SOURCE}/city/ground.png").convert("RGB")
+    tile_w = round(WORLD_W / 3)
+    tile_h = round(tile_w * source.height / source.width)
+    tile = source.resize((tile_w, tile_h), Image.LANCZOS)
+    height = tile_h * 3
+    world = Image.new("RGB", (tile_w * 3, height))
+    for column in range(3):
+        for row in range(3):
+            piece = tile
+            if column % 2:
+                piece = piece.transpose(Image.FLIP_LEFT_RIGHT)
+            if row % 2:
+                piece = piece.transpose(Image.FLIP_TOP_BOTTOM)
+            world.paste(piece, (column * tile_w, row * tile_h))
+    world.save(f"{ART}/ground.webp", quality=80, method=6)
+    return tile_w * 3, height, tile_w, tile_h
 
 
-def place(sprites, height, greenness):
+def place(sprites, width, height, tile_w, tile_h):
     random.seed(1998)
-    spawn = (WORLD_W * 0.6, height * 0.47)
+    spawn = (width // 2, height // 2)
+    keep_clear = [(200, -30), (-170, 70), (520, 240), (70, 210), (-420, -130)]
+    buildings = [s for s in sprites if s["kind"] in ("house", "tenement", "tower", "chapel", "gate")]
     placed = []
 
+    def add(sprite, x, y, scale=1.0):
+        placed.append({
+            "sprite": sprite["name"], "x": round(x), "y": round(y), "scale": round(scale, 2),
+            "radius": round(sprite["radius"] * scale), "light": sprite["kind"] == "lamp",
+        })
+
     def free(x, y, gap):
-        return all((x - o["x"]) ** 2 + (y - o["y"]) ** 2 >= gap**2 for o in placed)
+        if not (30 < x < width - 30 and 60 < y < height - 10):
+            return False
+        if any((x - spawn[0] - dx) ** 2 + (y - spawn[1] - dy) ** 2 < 120**2 for dx, dy in keep_clear):
+            return False
+        return all((x - o["x"]) ** 2 + ((y - o["y"]) * 1.5) ** 2 >= gap**2 for o in placed)
 
-    def scatter(kinds, count, gap, on_grass):
-        choices = [s for s in sprites if s["kind"] in kinds]
+    # City blocks sit on the sidewalks where four mirrored tiles meet.
+    for column in range(4):
+        for row in range(4):
+            cx, cy = column * tile_w, row * tile_h
+            for _ in range(36):
+                angle = random.uniform(0, 6.283)
+                distance = random.uniform(0, 290)
+                x, y = cx + math.cos(angle) * distance, cy + math.sin(angle) * distance * 0.62
+                if free(x, y, 165):
+                    add(random.choice(buildings), x, y, random.uniform(0.9, 1.1))
 
-        for _ in range(count * 60):
-            if not count:
-                return
-            x, y = random.uniform(40, WORLD_W - 40), random.uniform(70, height - 20)
-            if (x - spawn[0]) ** 2 + ((y - spawn[1]) * 1.4) ** 2 < 560**2:
-                continue
-            if on_grass and greenness[int(y / 8) - 1, int(x / 8) - 1] < 0.86:
-                continue
-            if not free(x, y, gap):
-                continue
-            sprite = random.choice(choices)
-            scale = random.uniform(0.8, 1.15)
-            radius = {"oak": 26, "pine": 22, "rock": 44, "bush": 0}[sprite["kind"]] * scale
-            placed.append({"sprite": sprite["name"], "x": round(x), "y": round(y), "scale": round(scale, 2), "radius": round(radius)})
-            count -= 1
+    lamps = [s for s in sprites if s["kind"] == "lamp"]
+    props = [s for s in sprites if s["kind"] in ("well", "crates")]
 
-    scatter({"oak", "pine"}, 72, 130, True)
-    scatter({"rock"}, 14, 150, True)
-    scatter({"bush"}, 34, 90, True)
+    # Lamps ring each street crossing; props sit along the kerbs.
+    for column in range(3):
+        for row in range(3):
+            cx, cy = (column + 0.5) * tile_w, (row + 0.5) * tile_h
+            for spot in range(5):
+                angle = spot / 5 * 6.283 + 0.4
+                x, y = cx + math.cos(angle) * tile_w * 0.3, cy + math.sin(angle) * tile_h * 0.33
+                if free(x, y, 90):
+                    add(random.choice(lamps), x, y)
+            for _ in range(2):
+                x, y = cx + random.uniform(-420, 420), cy + random.uniform(-260, 260)
+                if free(x, y, 120):
+                    add(random.choice(props), x, y)
     return spawn, placed
 
 
 sprites = objects()
 hero()
 items()
-height, greenness = ground()
-spawn, placed = place(sprites, height, greenness)
+world_width, height, tile_w, tile_h = ground()
+spawn, placed = place(sprites, world_width, height, tile_w, tile_h)
 
 with open(f"{REPO}/shared/forest.ts", "w") as out:
     out.write(
         "/* Generated by tools/build_art.py. */\n"
-        f"export const WORLD_W = {WORLD_W};\nexport const WORLD_H = {height};\n"
+        f"export const WORLD_W = {world_width};\nexport const WORLD_H = {height};\n"
         f"export const SPAWN = {{ x: {round(spawn[0])}, y: {round(spawn[1])} }};\n"
         f"export const SPRITES = {json.dumps(sprites)};\n"
         f"export const OBJECTS = {json.dumps(placed)};\n"

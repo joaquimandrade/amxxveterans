@@ -12,6 +12,11 @@ const WALK_STRIDE = 150;
 const RUN_STRIDE = 215;
 const SLASH_MS = 420;
 const MAX_PARTICLES = 500;
+const NIGHT = "rgba(7,9,22,0.84)";
+const LIGHT_SCALE = 0.25;
+const RAIN_DROPS = 150;
+const LAMP_RADIUS = 330;
+const HERO_LIGHT_RADIUS = 260;
 
 export type PlayerView = {
   x: number;
@@ -73,6 +78,9 @@ export class Renderer {
   private markerY = 0;
   private time = 0;
   private bolts: { points: { x: number; y: number }[]; life: number }[] = [];
+  private night = document.createElement("canvas");
+  private nightContext = this.night.getContext("2d")!;
+  private rain = Array.from({ length: RAIN_DROPS }, () => ({ x: Math.random(), y: Math.random(), speed: 0.9 + Math.random() * 0.8 }));
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -86,6 +94,8 @@ export class Renderer {
 
     this.canvas.width = innerWidth * scale;
     this.canvas.height = innerHeight * scale;
+    this.night.width = Math.ceil(this.canvas.width * LIGHT_SCALE);
+    this.night.height = Math.ceil(this.canvas.height * LIGHT_SCALE);
   }
 
   viewScale(camera: Camera) {
@@ -329,6 +339,90 @@ export class Renderer {
     context.stroke();
   }
 
+  /** Paints darkness over the frame and cuts soft holes where there is light. */
+  private drawNight(camera: Camera, heroes: PlayerView[], shots: { x: number; y: number }[]) {
+    const night = this.nightContext;
+    const { width, height } = this.night;
+    const worldScale = this.viewScale(camera) * LIGHT_SCALE;
+    const toX = (x: number) => (x - camera.x) * worldScale + width / 2;
+    const toY = (y: number) => (y - camera.y) * worldScale + height / 2;
+    const hole = (x: number, y: number, radius: number, strength: number) => {
+      const size = radius * worldScale;
+      const px = toX(x);
+      const py = toY(y);
+
+      if (px < -size || py < -size || px > width + size || py > height + size) return;
+      const gradient = night.createRadialGradient(px, py, 0, px, py, size);
+
+      gradient.addColorStop(0, `rgba(0,0,0,${strength})`);
+      gradient.addColorStop(0.45, `rgba(0,0,0,${strength * 0.55})`);
+      gradient.addColorStop(1, "rgba(0,0,0,0)");
+      night.fillStyle = gradient;
+      night.fillRect(px - size, py - size, size * 2, size * 2);
+    };
+
+    night.globalCompositeOperation = "source-over";
+    night.clearRect(0, 0, width, height);
+    night.fillStyle = NIGHT;
+    night.fillRect(0, 0, width, height);
+    night.globalCompositeOperation = "destination-out";
+
+    for (const object of OBJECTS) {
+      if (object.light) hole(object.x, object.y - 170, LAMP_RADIUS, 0.95);
+      else if (object.radius > 60) hole(object.x, object.y - 170 * object.scale, 170, 0.5);
+    }
+    for (const hero of heroes) hole(hero.x, hero.y - 80, HERO_LIGHT_RADIUS, hero.isSelf ? 0.9 : 0.7);
+    for (const shot of shots) hole(shot.x, shot.y - 60, 300, 1);
+    for (const bolt of this.bolts) {
+      const middle = bolt.points[bolt.points.length >> 1];
+
+      hole(middle.x, middle.y, 620, bolt.life / 0.24);
+    }
+
+    const context = this.context;
+
+    context.imageSmoothingEnabled = true;
+    context.drawImage(this.night, 0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  private drawLampGlow() {
+    const context = this.context;
+
+    context.globalCompositeOperation = "lighter";
+    for (const object of OBJECTS) {
+      if (!object.light) continue;
+      const y = object.y - 205;
+      const flicker = 1 + Math.sin(this.time * 9 + object.x) * 0.04;
+      const glow = context.createRadialGradient(object.x, y, 0, object.x, y, 150 * flicker);
+
+      glow.addColorStop(0, "rgba(255,170,70,0.5)");
+      glow.addColorStop(0.3, "rgba(255,120,40,0.16)");
+      glow.addColorStop(1, "rgba(255,90,20,0)");
+      context.fillStyle = glow;
+      context.fillRect(object.x - 160, y - 160, 320, 320);
+    }
+    context.globalCompositeOperation = "source-over";
+  }
+
+  private drawRain(dt: number) {
+    const context = this.context;
+    const { width, height } = this.canvas;
+
+    context.strokeStyle = "rgba(170,190,235,0.2)";
+    context.lineWidth = 1;
+    context.beginPath();
+    for (const drop of this.rain) {
+      drop.y = (drop.y + drop.speed * dt) % 1;
+      drop.x = (drop.x - drop.speed * dt * 0.12 + 1) % 1;
+      const x = drop.x * width;
+      const y = drop.y * height;
+
+      context.moveTo(x, y);
+      context.lineTo(x - 4, y + 24);
+    }
+    context.stroke();
+  }
+
   private drawVignette() {
     const context = this.context;
     const { width, height } = this.canvas;
@@ -337,7 +431,7 @@ export class Renderer {
     );
 
     shade.addColorStop(0, "rgba(20,12,5,0)");
-    shade.addColorStop(1, "rgba(20,12,5,0.5)");
+    shade.addColorStop(1, "rgba(2,3,10,0.55)");
     context.fillStyle = shade;
     context.fillRect(0, 0, width, height);
   }
@@ -355,7 +449,7 @@ export class Renderer {
 
     this.time += dt;
     context.setTransform(scale, 0, 0, scale, this.canvas.width / 2 - camera.x * scale, this.canvas.height / 2 - camera.y * scale);
-    context.fillStyle = "#3a4322";
+    context.fillStyle = "#0c0e18";
     context.fillRect(camera.x - 4096, camera.y - 4096, 8192, 8192);
     context.drawImage(this.art.sprites.get("ground")!, 0, 0, WORLD_W, WORLD_H);
     this.drawMarker(dt);
@@ -369,10 +463,16 @@ export class Renderer {
     ].sort((a, b) => a.y - b.y);
 
     for (const item of items) item.draw();
+
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    this.drawNight(camera, heroes, shots);
+    context.setTransform(scale, 0, 0, scale, this.canvas.width / 2 - camera.x * scale, this.canvas.height / 2 - camera.y * scale);
+    this.drawLampGlow();
     this.drawBolts(dt);
     this.drawParticles(dt);
 
     context.setTransform(1, 0, 0, 1, 0, 0);
+    this.drawRain(dt);
     this.drawVignette();
   }
 }

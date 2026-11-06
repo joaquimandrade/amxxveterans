@@ -34,9 +34,9 @@ Left click walks or picks things up, double click runs, right click swings the s
 | `server/src/arena.ts` | The game: movement, fireballs, hits, knockback |
 | `server/src/state.ts` | State synced to clients |
 | `client/src/main.ts` | Input, avatars, animation, following the server state |
-| `client/src/render.ts` | Drawing: painted ground, sprites sorted by depth, effects |
-| `shared/forest.ts` | Generated forest layout, used by server collisions and client drawing |
-| `tools/build_art.py` | Cuts the painted sheets into sprites and places the forest |
+| `client/src/render.ts` | Drawing: painted ground, sprites sorted by depth, night lighting, rain and effects |
+| `shared/forest.ts` | Generated city layout, used by server collisions and client drawing |
+| `tools/build_art.py` | Cuts the painted sheets into sprites and places the city |
 
 ## Adding a power
 
