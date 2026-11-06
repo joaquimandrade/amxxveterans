@@ -213,7 +213,8 @@ function forward(request: http.IncomingMessage, response: http.ServerResponse, i
   const upstream = http.request(
     { host: ip, port: APP_PORT, path, method: request.method, headers: request.headers },
     (reply) => {
-      response.writeHead(reply.statusCode ?? 502, reply.headers);
+      /* Files keep their names across commits, and Cloudflare stretches shorter cache rules */
+      response.writeHead(reply.statusCode ?? 502, { ...reply.headers, "cache-control": "no-store" });
       reply.pipe(response);
     },
   );
