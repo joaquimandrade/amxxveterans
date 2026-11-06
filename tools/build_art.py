@@ -34,7 +34,26 @@ def frames_of(name, count):
     alpha = hero_alpha(rgb)
     labels, found = ndimage.label(ndimage.binary_closing(alpha > 0.5, iterations=2))
     sizes = ndimage.sum(np.ones_like(labels), labels, range(1, found + 1))
-    keep = sorted(np.argsort(sizes)[-count:] + 1, key=lambda l: np.where(labels == l)[1].mean())
+    big = [index + 1 for index, size in enumerate(sizes) if size > 4000]
+
+    if len(big) != count:
+        # Swords touch the next figure, so cut the row into equal columns instead.
+        columns = np.where((alpha > 0.5).any(axis=0))[0]
+        edges = np.linspace(columns.min(), columns.max() + 1, count + 1).round().astype(int)
+        mass = (alpha > 0.5).sum(axis=0)
+        for index in range(1, count):
+            low, high = edges[index] - 60, edges[index] + 60
+            edges[index] = low + int(np.argmin(mass[low:high]))
+        labels = np.zeros_like(labels)
+        for index in range(count):
+            part = alpha[:, edges[index]:edges[index + 1]] > 0.5
+            pieces, _ = ndimage.label(part)
+            sizes = np.bincount(pieces.ravel())
+            sizes[0] = 0
+            labels[:, edges[index]:edges[index + 1]][pieces == sizes.argmax()] = index + 1
+        big = list(range(1, count + 1))
+
+    keep = sorted(big, key=lambda l: np.where(labels == l)[1].mean())
     frames = []
 
     for label in keep:
