@@ -1,5 +1,7 @@
 import { OBJECTS, SPRITES, WORLD_H, WORLD_W } from "../../shared/forest.ts";
 
+declare const __BUILD__: string;
+
 const CELL_W = 340;
 const CELL_H = 300;
 const FEET_Y = 282;
@@ -35,7 +37,7 @@ function loadImage(url: string) {
 }
 
 export async function loadArt(base: string) {
-  const art = (name: string) => loadImage(`${base}art/${name}.webp`);
+  const art = (name: string) => loadImage(`${base}art/${name}.webp?v=${__BUILD__}`);
   const [ground, walkFront, walkBack, slashFront, slashBack, ...sprites] = await Promise.all([
     art("ground"),
     art("hero_walk_front"),
