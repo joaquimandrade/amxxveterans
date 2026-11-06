@@ -17,6 +17,10 @@ export type Hotspot = {
   toArea: string;
   toX: number;
   toY: number;
+  /** The clickable object's outline, in world coordinates. */
+  outline: Point[];
+  /** A door's central gap, where light leaks out when it is hovered. */
+  seam?: { x: number; top: number; bottom: number };
 };
 
 /* Room paintings were laid out on an 1100 wide preview, then drawn at this scale. */
@@ -27,6 +31,11 @@ const room = (points: Point[]): Point[] => points.map(([x, y]) => [x * ROOM_SCAL
 const at = (x: number, y: number) => ({ x: x * ROOM_SCALE, y: y * ROOM_SCALE });
 
 export const MANSION = { x: SPAWN.x + 60, y: SPAWN.y - 300 };
+
+/* The mansion sprite's door, measured on the same preview: 600 tall, drawn 640 tall */
+const MANSION_LEFT = MANSION.x - 321;
+const MANSION_TOP = MANSION.y - 632;
+const onMansion = ([x, y]: Point): Point => [MANSION_LEFT + (x - 250) * 1.0667, MANSION_TOP + (y - 5) * 1.0667];
 
 const door = { x: MANSION.x - 171, y: MANSION.y - 30 };
 const hallDoor = at(345, 350);
@@ -57,22 +66,48 @@ export const AREAS: Record<string, Area> = {
   },
 };
 
+const mansionDoor: Point[] = [[340, 545], [342, 455], [360, 425], [383, 413], [408, 428], [420, 458], [418, 562]];
+const [doorSeamX, doorSeamTop] = onMansion([382, 420]);
+const [, doorSeamBottom] = onMansion([382, 552]);
+
 export const HOTSPOTS: Hotspot[] = [
-  { id: "enter", area: "city", x: door.x, y: door.y, label: "Enter the mansion", toArea: "hall", toX: hallDoor.x, toY: hallDoor.y },
-  { id: "leave", area: "hall", ...at(335, 345), label: "Leave", toArea: "city", toX: door.x - 30, toY: door.y + 60 },
-  { id: "up", area: "hall", ...at(490, 305), label: "Go upstairs", toArea: "upper", toX: upperStairs.x, toY: upperStairs.y },
-  { id: "down", area: "upper", ...at(880, 460), label: "Go downstairs", toArea: "hall", toX: hallStairs.x, toY: hallStairs.y },
+  {
+    id: "enter", area: "city", x: door.x, y: door.y, label: "Enter the mansion",
+    toArea: "hall", toX: hallDoor.x, toY: hallDoor.y,
+    outline: mansionDoor.map(onMansion),
+    seam: { x: doorSeamX, top: doorSeamTop, bottom: doorSeamBottom },
+  },
+  {
+    id: "leave", area: "hall", ...at(335, 345), label: "Leave",
+    toArea: "city", toX: door.x - 30, toY: door.y + 60,
+    outline: room([[278, 330], [278, 210], [300, 160], [330, 137], [362, 160], [385, 210], [385, 295]]),
+    seam: { x: 332 * ROOM_SCALE, top: 142 * ROOM_SCALE, bottom: 312 * ROOM_SCALE },
+  },
+  {
+    id: "up", area: "hall", ...at(490, 305), label: "Go upstairs",
+    toArea: "upper", toX: upperStairs.x, toY: upperStairs.y,
+    outline: room([[432, 272], [538, 150], [595, 150], [600, 250], [505, 305]]),
+  },
+  {
+    id: "down", area: "upper", ...at(880, 460), label: "Go downstairs",
+    toArea: "hall", toX: hallStairs.x, toY: hallStairs.y,
+    outline: room([[815, 375], [1000, 365], [1005, 430], [925, 462], [850, 430]]),
+  },
 ];
 
-export function insideFloor(area: Area, x: number, y: number) {
-  if (!area.floor) return x >= 0 && y >= 0 && x <= area.width && y <= area.height;
+export function insidePolygon(polygon: Point[], x: number, y: number) {
   let inside = false;
 
-  for (let i = 0, j = area.floor.length - 1; i < area.floor.length; j = i++) {
-    const [xi, yi] = area.floor[i];
-    const [xj, yj] = area.floor[j];
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
 
     if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
+}
+
+export function insideFloor(area: Area, x: number, y: number) {
+  if (!area.floor) return x >= 0 && y >= 0 && x <= area.width && y <= area.height;
+  return insidePolygon(area.floor, x, y);
 }

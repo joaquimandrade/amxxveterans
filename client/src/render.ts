@@ -1,4 +1,4 @@
-import { AREAS, MANSION } from "../../shared/areas.ts";
+import { AREAS, HOTSPOTS, type Hotspot, MANSION } from "../../shared/areas.ts";
 import { OBJECTS, SPRITES } from "../../shared/forest.ts";
 
 declare const __BUILD__: string;
@@ -78,12 +78,14 @@ export class Renderer {
   private context: CanvasRenderingContext2D;
   private particles: Particle[] = [];
   private markerTime = 0;
+  private hoverLevels = new Map<string, number>();
   private markerX = 0;
   private markerY = 0;
   private time = 0;
   private bolts: { points: { x: number; y: number }[]; life: number }[] = [];
   private night = document.createElement("canvas");
   private nightContext = this.night.getContext("2d")!;
+  private glows = new Map<string, { canvas: HTMLCanvasElement; x: number; y: number }>();
   private rain = Array.from({ length: RAIN_DROPS }, () => ({ x: Math.random(), y: Math.random(), speed: 0.9 + Math.random() * 0.8 }));
 
   constructor(
@@ -291,38 +293,115 @@ export class Renderer {
     context.fillText(hero.name, hero.x, hero.y - 187);
   }
 
-  private drawHotspot(item: Pickable, hovered: boolean) {
-    const context = this.context;
-    const pulse = 0.55 + Math.sin(this.time * 3) * 0.2;
+  /** A soft-edged, warm copy of the object's own pixels, kept ready to add over it. */
+  private glowFor(hotspot: Hotspot) {
+    const cached = this.glows.get(hotspot.id);
 
-    context.strokeStyle = `rgba(255,220,130,${hovered ? 1 : pulse})`;
-    context.lineWidth = hovered ? 4 : 2;
+    if (cached) return cached;
+
+    const city = hotspot.area === "city";
+    const source = this.art.sprites.get(city ? "mansion" : `room_${hotspot.area}`)!;
+    const sourceX = city ? MANSION.x - source.width / 2 : 0;
+    const sourceY = city ? MANSION.y - source.height + 8 : 0;
+    const margin = 14;
+    const xs = hotspot.outline.map(([x]) => x);
+    const ys = hotspot.outline.map(([, y]) => y);
+    const left = Math.min(...xs) - margin;
+    const top = Math.min(...ys) - margin;
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d")!;
+
+    canvas.width = Math.max(...xs) + margin - left;
+    canvas.height = Math.max(...ys) + margin - top;
+    context.filter = "blur(5px)";
+    context.fillStyle = "#fff";
     context.beginPath();
-    context.ellipse(item.x, item.y, 46, 19, 0, 0, Math.PI * 2);
-    context.stroke();
-    if (!hovered || !item.label) return;
-    context.font = "600 24px Georgia, serif";
+    hotspot.outline.forEach(([x, y], index) =>
+      index ? context.lineTo(x - left, y - top) : context.moveTo(x - left, y - top),
+    );
+    context.fill();
+    context.filter = "none";
+    context.globalCompositeOperation = "source-in";
+    context.drawImage(source, sourceX - left, sourceY - top);
+    context.globalCompositeOperation = "source-atop";
+    context.fillStyle = "rgba(255,176,84,0.34)";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    const glow = { canvas, x: left, y: top };
+
+    this.glows.set(hotspot.id, glow);
+    return glow;
+  }
+
+  /** Usable objects breathe softly, and answer the mouse with a warmer, stronger light. */
+  private drawHotspots(areaName: string, hovered: string | undefined, dt: number) {
+    const context = this.context;
+
+    context.globalCompositeOperation = "lighter";
+    for (const hotspot of HOTSPOTS) {
+      if (hotspot.area !== areaName) continue;
+      const target = hotspot.id === hovered ? 1 : 0;
+      const current = (this.hoverLevels.get(hotspot.id) ?? 0) + (target - (this.hoverLevels.get(hotspot.id) ?? 0)) * (1 - Math.exp(-10 * dt));
+      const breath = 0.5 + Math.sin(this.time * 2.1) * 0.5;
+      const glow = this.glowFor(hotspot);
+
+      this.hoverLevels.set(hotspot.id, current);
+      context.globalAlpha = 0.1 + breath * 0.14 + current * 0.62;
+      context.drawImage(glow.canvas, glow.x, glow.y);
+      context.globalAlpha = 1;
+
+      if (hotspot.seam) {
+        const { x, top, bottom } = hotspot.seam;
+        const width = 2 + breath * 2 + current * 16;
+        const leak = context.createLinearGradient(x - width, 0, x + width, 0);
+        const strength = 0.3 + breath * 0.2 + current * 0.6;
+
+        leak.addColorStop(0, "rgba(255,170,70,0)");
+        leak.addColorStop(0.5, `rgba(255,214,140,${strength})`);
+        leak.addColorStop(1, "rgba(255,170,70,0)");
+        context.fillStyle = leak;
+        context.fillRect(x - width, top, width * 2, bottom - top);
+      }
+    }
+    context.globalCompositeOperation = "source-over";
+  }
+
+  private drawLabel(pickables: Pickable[], hovered: string | undefined) {
+    const item = pickables.find((pickable) => pickable.id === hovered);
+    const hotspot = HOTSPOTS.find((spot) => spot.id === hovered);
+
+    if (!item?.label || !hotspot) return;
+    const context = this.context;
+    const ys = hotspot.outline.map(([, y]) => y);
+    const xs = hotspot.outline.map(([x]) => x);
+    const x = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const y = Math.min(...ys) - 18;
+
+    context.font = "600 26px Georgia, serif";
     context.textAlign = "center";
-    context.fillStyle = "rgba(0,0,0,0.75)";
-    context.fillText(item.label, item.x + 1, item.y - 39);
+    context.lineWidth = 6;
+    context.strokeStyle = "rgba(0,0,0,0.8)";
+    context.strokeText(item.label, x, y);
     context.fillStyle = "#ffe9b0";
-    context.fillText(item.label, item.x, item.y - 40);
+    context.fillText(item.label, x, y);
   }
 
   private drawPickable(item: Pickable, hovered: boolean) {
-    if (!item.sprite) return this.drawHotspot(item, hovered);
+    if (!item.sprite) return;
     const context = this.context;
     const image = this.art.sprites.get(item.sprite)!;
+    const left = item.x - image.width / 2;
+    const top = item.y - image.height + 8;
 
     this.drawShadow(item.x, item.y, image.width * 0.42, image.height * 0.16, 0.3);
+    context.drawImage(image, left, top);
     if (hovered) {
-      context.strokeStyle = "rgba(255,236,150,0.95)";
-      context.lineWidth = 3;
-      context.beginPath();
-      context.ellipse(item.x, item.y, image.width * 0.6, image.height * 0.3, 0, 0, Math.PI * 2);
-      context.stroke();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.45;
+      context.drawImage(image, left, top);
+      context.globalAlpha = 1;
+      context.globalCompositeOperation = "source-over";
     }
-    context.drawImage(image, item.x - image.width / 2, item.y - image.height + 8);
   }
 
   private drawFireball(x: number, y: number) {
@@ -512,11 +591,15 @@ export class Renderer {
     if (isCity) this.drawNight(camera, heroes, shots);
     context.setTransform(scale, 0, 0, scale, this.canvas.width / 2 - camera.x * scale, this.canvas.height / 2 - camera.y * scale);
     if (isCity) this.drawLampGlow();
+    this.drawHotspots(areaName, hovered, dt);
     this.drawBolts(dt);
     this.drawParticles(dt);
 
     context.setTransform(1, 0, 0, 1, 0, 0);
     if (isCity) this.drawRain(dt);
     this.drawVignette();
+    context.setTransform(scale, 0, 0, scale, this.canvas.width / 2 - camera.x * scale, this.canvas.height / 2 - camera.y * scale);
+    this.drawLabel(pickables, hovered);
+    context.setTransform(1, 0, 0, 1, 0, 0);
   }
 }

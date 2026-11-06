@@ -1,5 +1,5 @@
 import { Client, type Room } from "@colyseus/sdk";
-import { HOTSPOTS } from "../../shared/areas.ts";
+import { HOTSPOTS, insidePolygon } from "../../shared/areas.ts";
 import { SPAWN } from "../../shared/forest.ts";
 import { type Camera, type Pickable, type PlayerView, Renderer, artUrl, loadArt } from "./render.ts";
 
@@ -133,10 +133,17 @@ addEventListener("pointermove", (event) => {
 });
 function pickableAt(screenX: number, screenY: number) {
   const target = renderer.toWorld(camera, screenX, screenY);
+  const hotspot = HOTSPOTS.find(
+    (spot) => spot.area === currentArea && insidePolygon(spot.outline, target.x, target.y),
+  );
+
+  if (hotspot) return pickables.find((item) => item.id === hotspot.id);
+
   let best: Pickable | undefined;
   let bestDistance = PICK_RADIUS;
 
   for (const item of pickables) {
+    if (!item.sprite) continue;
     const distance = Math.hypot(item.x - target.x, item.y - 20 - target.y);
 
     if (distance < bestDistance) {
