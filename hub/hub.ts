@@ -295,10 +295,23 @@ await exec("git", ["clone", "--quiet", "--mirror", REPO, MIRROR]).catch(() => {}
 await fetchRepo(true);
 await restore();
 
+async function removePreview(branch: string) {
+  const sha = previews.get(branch)?.sha;
+
+  previews.delete(branch);
+  await exec("docker", ["rm", "-f", containerName(branch)]).catch(() => {});
+  if (sha) await rm(join(BUILDS, `${branch}-${sha.slice(0, 12)}`), { recursive: true, force: true });
+}
+
 setInterval(async () => {
   await fetchRepo(true).catch(() => {});
-  for (const branch of await listBranches()) {
+  const branches = await listBranches();
+
+  for (const branch of branches) {
     if (previews.get(branch.name)?.sha) ensure(branch.name, branch.sha);
+  }
+  for (const name of previews.keys()) {
+    if (!branches.some((branch) => branch.name === name)) await removePreview(name);
   }
 }, POLL_INTERVAL_MS);
 
