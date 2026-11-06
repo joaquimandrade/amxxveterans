@@ -366,23 +366,6 @@ export class Renderer {
     context.globalCompositeOperation = "source-over";
   }
 
-  /** Flashing writing, skewed to follow the back-left wall of the upper room. */
-  private drawWallText() {
-    const context = this.context;
-    const flash = Math.sin(this.time * 9) > -0.2 ? 1 : 0.12;
-
-    context.save();
-    context.transform(1, -0.335, 0, 1, 395, 200);
-    context.font = "700 44px Georgia, serif";
-    context.textAlign = "center";
-    context.globalAlpha = flash;
-    context.shadowColor = "#ff2a18";
-    context.shadowBlur = 22;
-    context.fillStyle = "#ff5a3c";
-    context.fillText("O Zé é Gay!!!", 0, 0);
-    context.restore();
-  }
-
   private drawLabel(pickables: Pickable[], hovered: string | undefined) {
     const item = pickables.find((pickable) => pickable.id === hovered);
     const hotspot = HOTSPOTS.find((spot) => spot.id === hovered);
@@ -609,7 +592,6 @@ export class Renderer {
     context.setTransform(scale, 0, 0, scale, this.canvas.width / 2 - camera.x * scale, this.canvas.height / 2 - camera.y * scale);
     if (isCity) this.drawLampGlow();
     this.drawHotspots(areaName, hovered, dt);
-    if (areaName === "upper") this.drawWallText();
     this.drawBolts(dt);
     this.drawParticles(dt);
 
