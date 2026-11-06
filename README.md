@@ -2,7 +2,7 @@
 
 Browser sandbox for exploring characters, animation and powers together. Not a game yet.
 
-**Stack:** Three.js and Vite on the client, Colyseus on the server, TypeScript on both sides. The server owns the game state.
+**Stack:** plain 2D canvas and Vite on the client, Colyseus on the server, TypeScript on both sides. The server owns the game state.
 
 ## Run it
 
@@ -25,7 +25,7 @@ Each branch runs in its own Docker container with no access to the host, the LAN
 
 ## Controls
 
-Right click moves, left click swings the sword, space throws a fireball at the mouse, and the wheel zooms.
+Left click walks, double click runs, right click swings the sword, holding right click casts lightning, space throws a fireball, and the wheel zooms.
 
 ## Where things live
 
@@ -34,16 +34,19 @@ Right click moves, left click swings the sword, space throws a fireball at the m
 | `server/src/arena.ts` | The game: movement, fireballs, hits, knockback |
 | `server/src/state.ts` | State synced to clients |
 | `client/src/main.ts` | Input, avatars, animation, following the server state |
-| `client/src/effects.ts` | Fireball and particle effects |
-| `client/src/world.ts` | Scene, lighting, ground and forest |
-| `client/src/hero.ts` | The hero, built and animated in code |
-| `shared/forest.ts` | Forest layout, used by server collisions and client drawing |
+| `client/src/render.ts` | Drawing: painted ground, sprites sorted by depth, effects |
+| `shared/forest.ts` | Generated forest layout, used by server collisions and client drawing |
+| `tools/build_art.py` | Cuts the painted sheets into sprites and places the forest |
 
 ## Adding a power
 
 1. Add a message and the logic in `server/src/arena.ts`.
-2. Add its look in `client/src/effects.ts`.
+2. Add its look in `client/src/render.ts`.
 3. Bind a key in `client/src/main.ts`.
+
+## Art
+
+The painted art in `client/public/art` was generated with Gemini 3 Pro Image. If this ever ships on Steam, it must be disclosed as AI-generated.
 
 ## Models
 

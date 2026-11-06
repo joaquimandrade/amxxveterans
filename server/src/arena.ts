@@ -1,26 +1,36 @@
 import { Client, Room } from "@colyseus/core";
-import { CLEARING_RADIUS, MAP_SIZE, TREES } from "../../shared/forest.ts";
+import { OBJECTS, SPAWN, WORLD_H, WORLD_W } from "../../shared/forest.ts";
 import { ArenaState, Player, Shot } from "./state.ts";
 
 const TICK_MS = 33;
-const WALK_SPEED = 6.5;
-const ARRIVE_DISTANCE = 0.25;
-const PLAYER_RADIUS = 0.5;
-const SHOT_SPEED = 20;
+const WALK_SPEED = 240;
+const RUN_SPEED = 430;
+const ARRIVE_DISTANCE = 8;
+const PLAYER_RADIUS = 22;
+/* The ground is seen at an angle, so vertical distances look shorter */
+const DEPTH_SCALE = 0.72;
+const SOLID = OBJECTS.filter((object) => object.radius > 0);
+const SHOT_SPEED = 720;
 const SHOT_LIFE_MS = 1400;
 const SHOT_COOLDOWN_MS = 500;
 const SLASH_COOLDOWN_MS = 450;
-const SLASH_RANGE = 2.6;
+const SLASH_RANGE = 120;
 const SLASH_ARC = 1.1;
-const SHOT_HIT_RADIUS = 1.1;
-const SHOT_KNOCKBACK = 16;
-const SLASH_KNOCKBACK = 22;
+const SHOT_HIT_RADIUS = 56;
+const SHOT_KNOCKBACK = 620;
+const SLASH_KNOCKBACK = 840;
+const BOLT_RANGE = 760;
+const BOLT_WIDTH = 46;
+const BOLT_COOLDOWN_MS = 550;
+const BOLT_KNOCKBACK = 700;
 const KNOCKBACK_DECAY = 6;
 
 type Runtime = {
   targetX: number;
   targetZ: number;
   hasTarget: boolean;
+  running: boolean;
+  lastBolt: number;
   lastShot: number;
   lastSlash: number;
   pushX: number;
@@ -41,34 +51,38 @@ export class Arena extends Room {
   private nextPlayer = 1;
 
   onCreate() {
-    this.onMessage("move", (client, target: { x: number; z: number }) => {
+    this.onMessage("move", (client, target: { x: number; z: number; run?: boolean }) => {
       const runtime = this.runtime.get(client.sessionId);
 
       if (!runtime || !target) return;
-      runtime.targetX = clamp(Number(target.x) || 0, -MAP_SIZE, MAP_SIZE);
-      runtime.targetZ = clamp(Number(target.z) || 0, -MAP_SIZE, MAP_SIZE);
+      runtime.targetX = clamp(Number(target.x) || 0, 0, WORLD_W);
+      runtime.targetZ = clamp(Number(target.z) || 0, 0, WORLD_H);
       runtime.hasTarget = true;
+      runtime.running = Boolean(target.run);
     });
     this.onMessage("fire", (client, aim: number) => this.fire(client.sessionId, Number(aim) || 0));
     this.onMessage("slash", (client, aim: number) => this.slash(client.sessionId, Number(aim) || 0));
+    this.onMessage("bolt", (client, aim: number) => this.bolt(client.sessionId, Number(aim) || 0));
     this.setSimulationInterval((dt) => this.step(dt), TICK_MS);
   }
 
   onJoin(client: Client) {
     const player = new Player();
     const angle = Math.random() * Math.PI * 2;
-    const distance = Math.random() * (CLEARING_RADIUS - 3);
+    const distance = Math.random() * 240;
 
     player.name = `P${this.nextPlayer}`;
     player.hue = (this.nextPlayer * 0.381966) % 1;
-    player.x = Math.cos(angle) * distance;
-    player.z = Math.sin(angle) * distance;
+    player.x = SPAWN.x + Math.cos(angle) * distance;
+    player.z = SPAWN.y + Math.sin(angle) * distance * DEPTH_SCALE;
     this.nextPlayer++;
     this.state.players.set(client.sessionId, player);
     this.runtime.set(client.sessionId, {
       targetX: player.x,
       targetZ: player.z,
       hasTarget: false,
+      running: false,
+      lastBolt: 0,
       lastShot: 0,
       lastSlash: 0,
       pushX: 0,
@@ -95,9 +109,9 @@ export class Arena extends Room {
 
     shot.owner = id;
     shot.vx = Math.sin(aim) * SHOT_SPEED;
-    shot.vz = Math.cos(aim) * SHOT_SPEED;
-    shot.x = player.x + Math.sin(aim);
-    shot.z = player.z + Math.cos(aim);
+    shot.vz = Math.cos(aim) * SHOT_SPEED * DEPTH_SCALE;
+    shot.x = player.x + Math.sin(aim) * 40;
+    shot.z = player.z + Math.cos(aim) * 40;
     this.state.shots.set(shotId, shot);
     this.shotLife.set(shotId, SHOT_LIFE_MS);
     this.broadcast("cast", { id });
@@ -122,8 +136,59 @@ export class Arena extends Room {
       if (angleDifference(Math.atan2(dx, dz), aim) > SLASH_ARC) return;
       player.hits++;
       otherRuntime.pushX += Math.sin(aim) * SLASH_KNOCKBACK;
-      otherRuntime.pushZ += Math.cos(aim) * SLASH_KNOCKBACK;
+      otherRuntime.pushZ += Math.cos(aim) * SLASH_KNOCKBACK * DEPTH_SCALE;
       this.broadcast("hit", { id: otherId });
+    });
+  }
+
+  /** Instant strike: stops at the first player or tree on its way. */
+  private bolt(id: string, aim: number) {
+    const player = this.state.players.get(id);
+    const runtime = this.runtime.get(id);
+    const now = this.clock.currentTime;
+
+    if (!player || !runtime || now - runtime.lastBolt < BOLT_COOLDOWN_MS) return;
+    runtime.lastBolt = now;
+    player.aim = aim;
+
+    const directionX = Math.sin(aim);
+    const directionZ = Math.cos(aim) * DEPTH_SCALE;
+    let reach = BOLT_RANGE;
+    let target: string | undefined;
+
+    const along = (x: number, z: number) => (x - player.x) * directionX + (z - player.z) * directionZ;
+    const across = (x: number, z: number) => Math.abs((x - player.x) * directionZ - (z - player.z) * directionX);
+
+    for (const object of SOLID) {
+      const distance = along(object.x, object.y);
+
+      if (distance > 0 && distance < reach && across(object.x, object.y) < object.radius) reach = distance;
+    }
+    this.state.players.forEach((other, otherId) => {
+      const distance = along(other.x, other.z);
+
+      if (otherId === id || distance <= 0 || distance >= reach) return;
+      if (across(other.x, other.z) > BOLT_WIDTH) return;
+      reach = distance;
+      target = otherId;
+    });
+
+    if (target) {
+      const victim = this.runtime.get(target);
+
+      player.hits++;
+      if (victim) {
+        victim.pushX += directionX * BOLT_KNOCKBACK;
+        victim.pushZ += directionZ * BOLT_KNOCKBACK;
+      }
+      this.broadcast("hit", { id: target });
+    }
+    this.broadcast("bolt", {
+      id,
+      fromX: player.x,
+      fromZ: player.z,
+      toX: player.x + directionX * reach,
+      toZ: player.z + directionZ * reach,
     });
   }
 
@@ -145,28 +210,31 @@ export class Arena extends Room {
       if (distance < ARRIVE_DISTANCE) {
         runtime.hasTarget = false;
       } else {
-        moveX = (dx / distance) * WALK_SPEED;
-        moveZ = (dz / distance) * WALK_SPEED;
+        const speed = runtime.running ? RUN_SPEED : WALK_SPEED;
+
+        moveX = (dx / distance) * speed;
+        moveZ = (dz / distance) * speed * DEPTH_SCALE;
         player.aim = Math.atan2(dx, dz);
       }
     }
 
     player.moving = runtime.hasTarget;
-    player.x = clamp(player.x + (moveX + runtime.pushX) * dt, -MAP_SIZE, MAP_SIZE);
-    player.z = clamp(player.z + (moveZ + runtime.pushZ) * dt, -MAP_SIZE, MAP_SIZE);
+    player.running = runtime.hasTarget && runtime.running;
+    player.x = clamp(player.x + (moveX + runtime.pushX) * dt, 0, WORLD_W);
+    player.z = clamp(player.z + (moveZ + runtime.pushZ) * dt, 0, WORLD_H);
     runtime.pushX *= Math.exp(-KNOCKBACK_DECAY * dt);
     runtime.pushZ *= Math.exp(-KNOCKBACK_DECAY * dt);
 
-    /* Slide around trunks instead of stopping dead */
-    for (const tree of TREES) {
-      const dx = player.x - tree.x;
-      const dz = player.z - tree.z;
+    /* Slide around trunks and rocks instead of stopping dead */
+    for (const object of SOLID) {
+      const dx = player.x - object.x;
+      const dz = player.z - object.y;
       const distance = Math.hypot(dx, dz) || 0.001;
-      const minimum = tree.radius + PLAYER_RADIUS;
+      const minimum = object.radius + PLAYER_RADIUS;
 
       if (distance >= minimum) continue;
-      player.x = tree.x + (dx / distance) * minimum;
-      player.z = tree.z + (dz / distance) * minimum;
+      player.x = object.x + (dx / distance) * minimum;
+      player.z = object.y + (dz / distance) * minimum;
     }
   }
 
@@ -186,7 +254,7 @@ export class Arena extends Room {
       shot.z += shot.vz * dt;
       this.shotLife.set(id, life);
 
-      let hit = TREES.some((tree) => Math.hypot(tree.x - shot.x, tree.z - shot.z) < tree.radius + 0.3);
+      let hit = SOLID.some((object) => Math.hypot(object.x - shot.x, object.y - shot.z) < object.radius + 10);
 
       this.state.players.forEach((player, playerId) => {
         const runtime = this.runtime.get(playerId);

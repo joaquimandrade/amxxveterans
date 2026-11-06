@@ -7,6 +7,7 @@ export class Player extends Schema {
   @type("number") z = 0;
   @type("number") aim = 0;
   @type("boolean") moving = false;
+  @type("boolean") running = false;
   @type("number") hits = 0;
 }
 
