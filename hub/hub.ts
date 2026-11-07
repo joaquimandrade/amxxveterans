@@ -27,7 +27,11 @@ const SAFE_BRANCH = /^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$/;
 const exec = promisify(execFile);
 
 type Branch = { name: string; sha: string; date: string; author: string; subject: string };
-type Preview = { sha?: string; ip?: string; building?: Promise<void>; buildingSha?: string; error?: string };
+type Preview = {
+  sha?: string; ip?: string; building?: Promise<void>; buildingSha?: string; error?: string;
+  /** The commit that failed, so reloading shows the error instead of quietly building it again. */
+  failedSha?: string;
+};
 
 const previews = new Map<string, Preview>();
 let lastFetch = 0;
@@ -145,7 +149,7 @@ function ensure(branch: string, sha: string) {
   const preview = previews.get(branch) ?? {};
 
   previews.set(branch, preview);
-  if (preview.sha === sha || preview.buildingSha === sha) return preview;
+  if (preview.sha === sha || preview.buildingSha === sha || preview.failedSha === sha) return preview;
   if (preview.building) return preview;
 
   preview.buildingSha = sha;
@@ -156,6 +160,7 @@ function ensure(branch: string, sha: string) {
   preview.building = job
     .catch((error: { stderr?: string; message: string }) => {
       preview.error = (error.stderr || error.message).split("\n").slice(-12).join("\n");
+      preview.failedSha = sha;
     })
     .finally(() => {
       preview.building = undefined;
