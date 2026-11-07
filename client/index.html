@@ -29,11 +29,7 @@
       #talk[hidden] { display: none; }
       .talk-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
       #talk-scene-tall { display: none; object-position: center top; }
-      /* On a phone held upright: the tall painting, and a bigger dialogue box across the bottom. */
-      @media (orientation: portrait) {
-        #talk-scene { display: none; }
-        #talk-scene-tall { display: block; }
-        #talk-box { bottom: 0; width: 100vw; min-height: 36vh; grid-template-columns: 1fr; gap: 10px; padding: 18px 18px 34px; border-width: 3px 0 0; outline: none; }
+      #talk-box { bottom: 0; width: 100vw; min-height: 36vh; grid-template-columns: 1fr; gap: 10px; padding: 18px 18px 34px; border-width: 3px 0 0; outline: none; }
         /* The portrait sticks out above the box, clear of the text below the name. */
         #talk-box > img { position: absolute; top: -50px; left: 18px; width: 84px; height: 84px; }
         #talk-name { margin: 0 0 18px 104px; font-size: 16px; }
@@ -51,6 +47,19 @@
       #talk-english { font: 600 clamp(16px, 2.2vw, 22px)/1.4 Georgia, serif; min-height: 2.8em; }
       #talk-romanian { font: italic clamp(14px, 1.8vw, 18px)/1.4 Georgia, serif; color: #d9c48f; margin-top: 8px; min-height: 1.4em; }
       #talk-next { position: absolute; right: 12px; bottom: 8px; font: 10px "Press Start 2P", monospace; color: #e8d7a8; animation: blink 1s steps(2) infinite; }
+      /* On a phone held upright: the tall painting, and a dialogue box sized to the screen width,
+         with portrait and text growing with it. Kept after the general rules so it wins. */
+      @media (orientation: portrait) {
+        #talk-scene { display: none; }
+        #talk-scene-tall { display: block; }
+        #talk-box { bottom: 2vh; width: calc(100vw - 16px); grid-template-columns: 1fr; gap: 0; padding: 3vw 4vw 7vw; }
+        /* The portrait sticks out above the box, clear of the text below the name. */
+        #talk-box > img { position: absolute; top: -12vw; left: 4vw; width: 22vw; height: 22vw; }
+        #talk-name { margin: 0 0 4vw 26vw; font-size: 4.2vw; }
+        #talk-english { font-size: 5.6vw; min-height: 0; }
+        #talk-romanian { font-size: 4.6vw; min-height: 0; margin-top: 2.5vw; }
+        #talk-next { font-size: 2.8vw; bottom: 2.5vw; right: 4vw; }
+      }
       @keyframes blink { 50% { opacity: 0; } }
       #banner { position: fixed; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
       #banner[hidden] { display: none; }
