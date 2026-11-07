@@ -77,20 +77,38 @@ function crack(seconds: number, volume: number, frequency = 2500, delay = 0) {
   source.start(start, Math.random() * 0.5, seconds + 0.02);
 }
 
+/** Low, muffled noise that dies fast: a blow landing on a body, with no pitch to ring like metal. */
+function body(cutoff: number, seconds: number, volume: number) {
+  if (!audio || !noise) return;
+  const start = audio.currentTime;
+  const source = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const envelope = audio.createGain();
+
+  source.buffer = noise;
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(cutoff, start);
+  filter.frequency.exponentialRampToValueAtTime(cutoff * 0.25, start + seconds);
+  envelope.gain.setValueAtTime(1, start);
+  envelope.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
+  source.connect(filter).connect(envelope).connect(output(volume));
+  source.start(start, Math.random() * 0.5, seconds + 0.02);
+}
+
 export const sounds = {
   knife: () => whoosh(5200, 1400, 0.16, 0.5),
   axe: () => whoosh(1600, 380, 0.3, 0.75),
   /** Virgiliu's blade landing on the policeman. */
   strike: () => {
-    crack(0.07, 0.5, 1800);
-    thump(190, 60, 0.16, 0.8);
+    crack(0.035, 0.35, 2200);
+    body(900, 0.14, 1.4);
   },
   /** The baton going up and swinging down. */
   baton: (delayMs: number) => whoosh(900, 260, 0.24, 0.6, Math.max(0, delayMs - 180) / 1000),
   /** The baton landing on Virgiliu. */
   hurt: () => {
-    crack(0.05, 0.55, 1200);
-    thump(140, 45, 0.24, 1, "triangle");
+    crack(0.03, 0.3, 1600);
+    body(600, 0.2, 1.6);
   },
   fireball: () => {
     whoosh(300, 1500, 0.45, 0.55);
