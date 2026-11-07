@@ -101,9 +101,9 @@ heroPortrait.src = artUrl(base, "portrait_hero");
 talkScene.src = artUrl(base, "scene_talk");
 (document.getElementById("talk-scene-tall") as HTMLImageElement).src = artUrl(base, "scene_talk_tall");
 
-/* Intro: a title screen (the press that starts it also unlocks sound), the camera flying in on the
-   two of them, then the dialogue, then the fight. Each part has its own music. */
-let stage: "title" | "zoom" | "talk" | "fight" | "over" = "title";
+/* Intro: the title over the camera flying in on the two of them, then the dialogue, then the fight.
+   Each part has its own music. */
+let stage: "zoom" | "talk" | "fight" | "over" = "zoom";
 let stageTime = 0;
 let line = 0;
 let typed = 0;
@@ -167,7 +167,7 @@ function updateIntro(dt: number, self: PlayerView | undefined, enemy: EnemyView 
     return false;
   }
   if (!self || !enemy) return true;
-  if (stage !== "title") stageTime += dt;
+  stageTime += dt;
   const ease = Math.min(1, stageTime / ZOOM_SECONDS);
   const smooth = ease * ease * (3 - 2 * ease);
 
@@ -187,14 +187,10 @@ function updateIntro(dt: number, self: PlayerView | undefined, enemy: EnemyView 
   return true;
 }
 
-function pressStart() {
-  stage = "zoom";
-  banner.hidden = true;
-  unlockSound();
-  playMusic("intro");
-}
-
-showBanner("ROMANIAN LIFE", "press start", 0, true);
+/* Browsers may hold sound back until the first click or key; the music is queued anyway and starts then. */
+unlockSound();
+playMusic("intro");
+showBanner("ROMANIAN LIFE", "", 2.6, true);
 
 function checkEnd(phase: string) {
   if (stage !== "fight" || (phase !== "won" && phase !== "lost")) return;
@@ -482,10 +478,6 @@ function touchPress(timeStamp: number) {
 
 addEventListener("pointerdown", (event) => {
   unlockSound();
-  if (stage === "title") {
-    pressStart();
-    return;
-  }
   if (stage === "talk") {
     advanceTalk();
     return;
@@ -514,10 +506,6 @@ addEventListener("pointercancel", pointerReleased);
 addEventListener("blur", stopHolding);
 addEventListener("keydown", (event) => {
   unlockSound();
-  if (stage === "title") {
-    if (!event.repeat) pressStart();
-    return;
-  }
   if (stage === "talk" && (event.code === "Space" || event.code === "Enter")) {
     if (!event.repeat) advanceTalk();
     return;
