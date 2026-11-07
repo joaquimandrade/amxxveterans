@@ -3,18 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>AMXX Veterans</title>
+    <title>Romanian Life</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet" />
     <style>
       html, body { margin: 0; touch-action: none; user-select: none; -webkit-user-select: none; height: 100%; overflow: hidden; background: #0c0e18; }
       canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
-      #hud {
-        position: fixed; top: 12px; left: 14px; color: #f3e6d0; pointer-events: none;
-        font: 14px/1.5 ui-monospace, Menlo, Consolas, monospace; text-shadow: 0 1px 3px #000;
+      #help {
+        position: fixed; left: 14px; bottom: 12px; color: #f3e6d0; pointer-events: none; opacity: 0.8;
+        font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; text-shadow: 0 1px 3px #000;
       }
-      #hud b { color: #ffb347; }
       #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; }
-      #mana { position: fixed; left: 14px; bottom: 16px; width: 220px; height: 16px; background: #1b2238cc; border: 2px solid #c9a86a; border-radius: 3px; }
-      #mana-fill { height: 100%; background: linear-gradient(#6aa8ff, #2a56c8); }
+      /* Arcade health bars: portrait, name and score above a yellow bar on red. */
+      #bars { position: fixed; top: 12px; left: 14px; pointer-events: none; display: grid; gap: 10px; font-family: "Press Start 2P", ui-monospace, monospace; }
+      .fighter { display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: end; width: min(360px, calc(100vw - 28px)); }
+      .fighter[hidden] { display: none; }
+      .portrait { width: 56px; height: 56px; border: 3px solid #fff; outline: 2px solid #000; background: #222; image-rendering: auto; }
+      .label { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 13px; color: #fff; text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; }
+      .label .score { color: #7cf2ff; }
+      .enemy .label { color: #ffd23a; }
+      .bar { position: relative; height: 16px; background: #301010; border: 2px solid #fff; outline: 2px solid #000; }
+      .bar div { position: absolute; inset: 0 auto 0 0; height: 100%; }
+      .bar .lag { background: #e02818; transition: width 0.6s ease 0.25s; }
+      .bar .fill { background: linear-gradient(#fff6a0, #ffd200 45%, #e8a400); }
+      #mana { height: 6px; margin-top: 4px; background: #1b2238; border: 2px solid #000; }
+      #mana-fill { height: 100%; background: linear-gradient(#8ec0ff, #2a56c8); }
+      #brand {
+        position: fixed; right: 18px; bottom: 10px; pointer-events: none; color: #fff7e0; opacity: 0.42;
+        font: 700 clamp(22px, 4vw, 40px)/1 "Cinzel Decorative", Georgia, serif; letter-spacing: 1px;
+        text-shadow: 0 2px 6px #0008;
+      }
       #panel {
         position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100vw - 32px));
         padding: 18px; color: #3a2a18; background: #e6d3a8; border: 4px solid #6b4a24; border-radius: 6px;
@@ -32,8 +50,25 @@
   </head>
   <body>
     <div id="fade"></div>
-    <div id="hud">connecting…</div>
-    <div id="mana"><div id="mana-fill"></div></div>
+    <div id="bars">
+      <div class="fighter">
+        <img class="portrait" id="hero-portrait" alt="" />
+        <div>
+          <div class="label"><span>VIRGILIU</span><span class="score" id="hero-score">000000</span></div>
+          <div class="bar"><div class="lag" id="hero-lag"></div><div class="fill" id="hero-fill"></div></div>
+          <div id="mana"><div id="mana-fill"></div></div>
+        </div>
+      </div>
+      <div class="fighter enemy" id="enemy-bar" hidden>
+        <img class="portrait" id="enemy-portrait" alt="" />
+        <div>
+          <div class="label"><span id="enemy-name"></span></div>
+          <div class="bar"><div class="lag" id="enemy-lag"></div><div class="fill" id="enemy-fill"></div></div>
+        </div>
+      </div>
+    </div>
+    <div id="brand">Romanian Life</div>
+    <div id="help">click walk or use · double click run · right click attack · hold right lightning · space fireball · M inventory · wheel zoom</div>
     <section id="panel" hidden>
       <h2>Inventory</h2>
       <p id="panel-hint">Click a weapon to equip it, or a potion to drink it. M closes.</p>

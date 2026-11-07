@@ -1,7 +1,7 @@
 import { Client, type Room } from "@colyseus/sdk";
 import { HOTSPOTS, insidePolygon } from "../../shared/areas.ts";
 import { SPAWN } from "../../shared/forest.ts";
-import { type Camera, type Pickable, type PlayerView, Renderer, artUrl, loadArt } from "./render.ts";
+import { type Camera, type EnemyView, type Pickable, type PlayerView, Renderer, artUrl, loadArt } from "./render.ts";
 
 type PlayerState = {
   name: string;
@@ -14,9 +14,13 @@ type PlayerState = {
   hits: number;
   area: string;
   mana: number;
+  health: number;
+  alive: boolean;
+  kills: number;
   weapon: string;
   inventory: string[];
 };
+type EnemyState = { kind: string; x: number; z: number; aim: number; moving: boolean; health: number; maxHealth: number };
 type ShotState = { x: number; z: number; area: string };
 type GroundState = { kind: string; x: number; z: number };
 type ChestState = { x: number; z: number; open: boolean };
@@ -28,12 +32,23 @@ const HOLD_MS = 280;
 const BOLT_REPEAT_MS = 560;
 const PICK_RADIUS = 58;
 const DEPTH_SCALE = 0.72;
+const ENEMY_NAMES: Record<string, string> = { cop: "POLICEMAN", donkey: "DONKEY COP" };
+const ENEMY_ATTACK_MS = 520;
+const DYING_MS = 900;
 const ITEM_NAMES: Record<string, string> = {
   sword: "Knife", axe: "Battle axe", potion_mana: "Mana potion", coins: "Gold coins",
   ring: "Gold ring", helmet: "Helmet", pouch: "Leather pouch",
 };
-const hud = document.getElementById("hud")!;
 const manaFill = document.getElementById("mana-fill")!;
+const heroFill = document.getElementById("hero-fill")!;
+const heroLag = document.getElementById("hero-lag")!;
+const heroScore = document.getElementById("hero-score")!;
+const enemyBar = document.getElementById("enemy-bar")!;
+const enemyFill = document.getElementById("enemy-fill")!;
+const enemyLag = document.getElementById("enemy-lag")!;
+const enemyName = document.getElementById("enemy-name")!;
+const enemyPortrait = document.getElementById("enemy-portrait") as HTMLImageElement;
+const heroPortrait = document.getElementById("hero-portrait") as HTMLImageElement;
 const panel = document.getElementById("panel")!;
 const panelHint = document.getElementById("panel-hint")!;
 const slots = document.getElementById("slots")!;
@@ -50,11 +65,15 @@ document.body.appendChild(canvas);
 
 const [art, room] = await Promise.all([
   loadArt(base),
-  new Client(url).joinOrCreate("arena") as Promise<Room>,
+  /* Single player: always a fresh room of one's own. */
+  new Client(url).create("arena") as Promise<Room>,
 ]);
 const renderer = new Renderer(canvas, art);
+heroPortrait.src = artUrl(base, "portrait_hero");
 const camera: Camera = { x: SPAWN.x, y: SPAWN.y, zoom: 0.8 };
 const views = new Map<string, PlayerView>();
+const enemyViews = new Map<string, EnemyView>();
+let enemyShownAt = -Infinity;
 const pointer = { x: innerWidth / 2, y: innerHeight / 2 };
 let cameraReady = false;
 let hovered: string | undefined;
@@ -96,6 +115,7 @@ function updateView(id: string, player: PlayerState, dt: number) {
       walkDistance: 0,
       slashTime: -1,
       flash: 0,
+      alive: true,
     };
     views.set(id, view);
   }
@@ -112,6 +132,7 @@ function updateView(id: string, player: PlayerState, dt: number) {
   view.moving = player.moving;
   view.running = player.running;
   view.weapon = player.weapon;
+  view.alive = player.alive;
   view.flash = Math.max(0, view.flash - dt * 4);
   if (view.slashTime >= 0) {
     view.slashTime += dt * 1000;
@@ -119,13 +140,62 @@ function updateView(id: string, player: PlayerState, dt: number) {
   }
 }
 
-function updateHud(players: Map<string, PlayerState>) {
-  const rows: string[] = [];
+function updateEnemies(enemies: Map<string, EnemyState>, dt: number) {
+  enemies.forEach((enemy, id) => {
+    let view = enemyViews.get(id);
 
-  players.forEach((player, id) => {
-    rows.push(`${id === room.sessionId ? "<b>you</b> " : ""}${player.name}: ${player.hits}`);
+    if (!view) {
+      view = { kind: enemy.kind, x: enemy.x, y: enemy.z, aim: enemy.aim, moving: false, walkDistance: 0, attackTime: -1, flash: 0, dying: -1 };
+      enemyViews.set(id, view);
+    }
+    const follow = 1 - Math.exp(-18 * dt);
+    const stepX = (enemy.x - view.x) * follow;
+    const stepY = (enemy.z - view.y) * follow;
+
+    view.x += stepX;
+    view.y += stepY;
+    view.walkDistance = enemy.moving ? view.walkDistance + Math.hypot(stepX, stepY / DEPTH_SCALE) : 0;
+    view.aim = enemy.aim;
+    view.moving = enemy.moving;
   });
-  hud.innerHTML = `${rows.join("<br>")}<br><br>left click walk or use · double click run · right click attack · hold right lightning · space fireball · M inventory · wheel zoom`;
+  for (const [id, view] of enemyViews) {
+    view.flash = Math.max(0, view.flash - dt * 4);
+    if (view.attackTime >= 0) {
+      view.attackTime += dt * 1000;
+      if (view.attackTime > ENEMY_ATTACK_MS) view.attackTime = -1;
+    }
+    if (view.dying >= 0) view.dying += dt * 1000;
+    if (view.dying > DYING_MS || (view.dying < 0 && !enemies.has(id))) enemyViews.delete(id);
+  }
+}
+
+/* Arcade health bars: the yellow drops at once, the red behind it catches up a moment later. */
+function setBar(fill: HTMLElement, lag: HTMLElement, share: number) {
+  const width = `${Math.max(0, Math.min(1, share)) * 100}%`;
+
+  fill.style.width = width;
+  lag.style.width = width;
+}
+
+function updateHud(self: PlayerState | undefined, enemies: Map<string, EnemyState>, now: number) {
+  if (self) {
+    setBar(heroFill, heroLag, self.health / 100);
+    manaFill.style.width = `${self.mana}%`;
+    heroScore.textContent = String(self.kills * 1000).padStart(6, "0");
+  }
+  const enemy = [...enemies.values()][0];
+
+  if (enemy) {
+    enemyShownAt = now;
+    enemyBar.hidden = false;
+    enemyName.textContent = ENEMY_NAMES[enemy.kind] ?? enemy.kind.toUpperCase();
+    enemyPortrait.src = artUrl(base, `portrait_${enemy.kind}`);
+    setBar(enemyFill, enemyLag, enemy.health / enemy.maxHealth);
+  } else if (now - enemyShownAt > 1200) {
+    enemyBar.hidden = true;
+  } else {
+    setBar(enemyFill, enemyLag, 0);
+  }
 }
 
 addEventListener("contextmenu", (event) => event.preventDefault());
@@ -295,6 +365,23 @@ room.onMessage("slash", ({ id }: { id: string }) => {
   if (view) view.slashTime = 0;
 });
 room.onMessage("cast", () => {});
+room.onMessage("enemyAttack", ({ id }: { id: string }) => {
+  const view = enemyViews.get(id);
+
+  if (view) view.attackTime = 0;
+});
+room.onMessage("enemyHit", ({ id }: { id: string }) => {
+  const view = enemyViews.get(id);
+
+  if (view) view.flash = 1;
+});
+room.onMessage("enemyDown", ({ id, kind, x, z, aim }: { id: string; kind: string; x: number; z: number; aim: number }) => {
+  const view = enemyViews.get(id) ?? { kind, x, y: z, aim, moving: false, walkDistance: 0, attackTime: -1, flash: 0, dying: 0 };
+
+  view.dying = 0;
+  view.moving = false;
+  enemyViews.set(id, view);
+});
 room.onMessage("bolt", (bolt: { area: string; fromX: number; fromZ: number; toX: number; toZ: number }) => {
   if (bolt.area === currentArea) renderer.addBolt(bolt.fromX, bolt.fromZ, bolt.toX, bolt.toZ);
 });
@@ -305,14 +392,16 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 
   /* The first state patch can arrive a moment after joining */
-  if (!room.state?.players || !room.state?.shots || !room.state?.items) return;
+  if (!room.state?.players || !room.state?.shots || !room.state?.items || !room.state?.enemies) return;
 
   const dt = Math.min((now - lastFrame) / 1000, 0.1);
   const players: Map<string, PlayerState> = room.state.players;
   const shots: Map<string, ShotState> = room.state.shots;
+  const enemies: Map<string, EnemyState> = room.state.enemies;
 
   lastFrame = now;
   players.forEach((player, id) => updateView(id, player, dt));
+  updateEnemies(enemies, dt);
   for (const id of views.keys()) {
     if (!players.has(id)) views.delete(id);
   }
@@ -344,10 +433,7 @@ function frame(now: number) {
 
   const selfState = players.get(room.sessionId);
 
-  if (selfState) {
-    manaFill.style.width = `${selfState.mana}%`;
-    renderInventory(selfState);
-  }
+  if (selfState) renderInventory(selfState);
 
   const self = views.get(room.sessionId);
 
@@ -362,10 +448,10 @@ function frame(now: number) {
 
   const visible = [...views].filter(([id]) => players.get(id)?.area === currentArea).map(([, view]) => view);
 
-  renderer.draw(currentArea, camera, visible, shotViews, pickables, hovered, dt);
+  renderer.draw(currentArea, camera, visible, [...enemyViews.values()], shotViews, pickables, hovered, dt);
   fade = Math.max(0, fade - dt * 2);
   fadeLayer.style.opacity = String(fade);
-  updateHud(players);
+  updateHud(selfState, enemies, now);
 }
 
 requestAnimationFrame(frame);

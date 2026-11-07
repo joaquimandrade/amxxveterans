@@ -34,9 +34,23 @@ export type PlayerView = {
   walkDistance: number;
   slashTime: number;
   flash: number;
+  alive: boolean;
 };
 
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; maxLife: number; size: number };
+
+export type EnemyView = {
+  kind: string;
+  x: number;
+  y: number;
+  aim: number;
+  moving: boolean;
+  walkDistance: number;
+  attackTime: number;
+  flash: number;
+  /** Counts up after death, while the body falls and fades. */
+  dying: number;
+};
 
 export type Camera = { x: number; y: number; zoom: number };
 
@@ -52,6 +66,9 @@ function loadImage(url: string) {
 export const ITEM_KINDS = [
   "axe", "chest", "chest_open", "potion_mana", "potion_health", "sword", "coins", "ring", "helmet", "pouch",
 ];
+export const ENEMY_KINDS = ["cop", "donkey"];
+const ENEMY_ATTACK_MS = 520;
+const DYING_MS = 900;
 const HERO_SHEETS = ["idle_front", "idle_back", "walk_front", "walk_back", "slash_front", "slash_back"];
 
 export const artUrl = (base: string, name: string) => `${base}art/${name}.webp?v=${__BUILD__}`;
@@ -67,6 +84,7 @@ export async function loadArt(base: string) {
       ...SPRITES.map((sprite) => sprite.name),
       ...ITEM_KINDS.map((kind) => `item_${kind}`),
       ...HERO_SHEETS.flatMap((sheet) => [`hero_${sheet}`, `hero_axe_${sheet}`]),
+      ...ENEMY_KINDS.flatMap((kind) => ["walk_front", "walk_back", "attack"].map((sheet) => `enemy_${kind}_${sheet}`)),
     ]),
   );
 
@@ -229,6 +247,37 @@ export class Renderer {
     context.globalAlpha = 1;
   }
 
+  private drawEnemy(enemy: EnemyView) {
+    const context = this.context;
+    const dx = Math.sin(enemy.aim);
+    const facesCamera = Math.cos(enemy.aim) >= 0;
+    const attacking = enemy.attackTime >= 0 && enemy.dying < 0;
+    const sheetName = attacking ? "attack" : `walk_${facesCamera ? "front" : "back"}`;
+    const sheet = this.art.sprites.get(`enemy_${enemy.kind}_${sheetName}`)!;
+    const frame = attacking
+      ? Math.min(SLASH_FRAMES - 1, Math.floor((enemy.attackTime / ENEMY_ATTACK_MS) * SLASH_FRAMES))
+      : enemy.moving ? Math.floor((enemy.walkDistance / (enemy.kind === "donkey" ? 190 : WALK_STRIDE)) * WALK_FRAMES) % WALK_FRAMES : 0;
+    const big = enemy.kind === "donkey";
+
+    this.drawShadow(enemy.x, enemy.y, big ? 70 : 44, big ? 22 : 15, 0.32);
+    context.save();
+    context.translate(enemy.x, enemy.y);
+    if (enemy.dying >= 0) {
+      const fall = Math.min(1, enemy.dying / (DYING_MS * 0.4));
+
+      context.globalAlpha = Math.max(0, 1 - enemy.dying / DYING_MS);
+      context.rotate((dx < 0 ? -1 : 1) * fall * 1.35);
+    }
+    if (dx < 0) context.scale(-1, 1);
+    context.drawImage(sheet, frame * CELL_W, 0, CELL_W, CELL_H, -CELL_W / 2, -FEET_Y, CELL_W, CELL_H);
+    if (enemy.flash > 0) {
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha *= enemy.flash * 0.6;
+      context.drawImage(sheet, frame * CELL_W, 0, CELL_W, CELL_H, -CELL_W / 2, -FEET_Y, CELL_W, CELL_H);
+    }
+    context.restore();
+  }
+
   private drawShadow(x: number, y: number, radiusX: number, radiusY: number, alpha: number) {
     const context = this.context;
 
@@ -254,31 +303,20 @@ export class Renderer {
 
     this.drawShadow(hero.x, hero.y, 46, 16, 0.32);
 
-    context.strokeStyle = `hsl(${hero.hue * 360} 80% ${hero.isSelf ? 62 : 48}%)`;
-    context.lineWidth = hero.isSelf ? 4 : 3;
-    context.beginPath();
-    context.ellipse(hero.x, hero.y, 52, 21, 0, 0, Math.PI * 2);
-    context.stroke();
-
     context.save();
     context.translate(hero.x, hero.y);
+    if (!hero.alive) {
+      context.globalAlpha = 0.6;
+      context.rotate((dx < 0 ? -1 : 1) * 1.35);
+    }
     if (dx < 0) context.scale(-1, 1);
     context.drawImage(sheet, frame * CELL_W, 0, CELL_W, CELL_H, -CELL_W / 2, -FEET_Y, CELL_W, CELL_H);
-    context.restore();
-
     if (hero.flash > 0) {
-      context.fillStyle = `rgba(255,120,40,${hero.flash * 0.5})`;
-      context.beginPath();
-      context.ellipse(hero.x, hero.y - 80, 60, 94, 0, 0, Math.PI * 2);
-      context.fill();
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha *= hero.flash * 0.6;
+      context.drawImage(sheet, frame * CELL_W, 0, CELL_W, CELL_H, -CELL_W / 2, -FEET_Y, CELL_W, CELL_H);
     }
-
-    context.font = "600 22px ui-sans-serif, system-ui, sans-serif";
-    context.textAlign = "center";
-    context.fillStyle = "rgba(0,0,0,0.6)";
-    context.fillText(hero.name, hero.x + 1, hero.y - 186);
-    context.fillStyle = "#fff4dc";
-    context.fillText(hero.name, hero.x, hero.y - 187);
+    context.restore();
   }
 
   /** A soft-edged, warm copy of the object's own pixels, kept ready to add over it. */
@@ -553,6 +591,7 @@ export class Renderer {
     areaName: string,
     camera: Camera,
     heroes: PlayerView[],
+    enemies: EnemyView[],
     shots: { x: number; y: number }[],
     pickables: Pickable[],
     hovered: string | undefined,
@@ -577,6 +616,7 @@ export class Renderer {
       ...pickables.map((item) => ({ y: item.y, draw: () => this.drawPickable(item, item.id === hovered) })),
       ...NPCS.filter((npc) => npc.area === areaName).map((npc) => ({ y: npc.y, draw: () => this.drawNpc(npc) })),
       ...heroes.map((hero) => ({ y: hero.y, draw: () => this.drawHero(hero) })),
+      ...(isCity ? enemies : []).map((enemy) => ({ y: enemy.y, draw: () => this.drawEnemy(enemy) })),
       ...shots.map((shot) => ({ y: shot.y, draw: () => this.drawFireball(shot.x, shot.y) })),
     ].sort((a, b) => a.y - b.y);
 

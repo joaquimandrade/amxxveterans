@@ -3,7 +3,8 @@
 Usage: build_art.py SOURCE_DIR REPO_DIR
 Sources: vil/ground.png, vil/objects.png, items.png, walk_front, walk_back,
 slash_front and slash_back (each also with an axe_ prefix), and the walk
-cycles pw_front, pw_back, pa_front and pa_back. The current hero's sheets live in h3/.
+cycles pw_front, pw_back, pa_front and pa_back. The current hero's sheets live in h3/,
+the police in cop/.
 """
 import json
 import math
@@ -25,10 +26,18 @@ def load(name):
     return np.asarray(Image.open(f"{SOURCE}/{name}").convert("RGB")).astype(np.float32)
 
 
+# Some sheets come back with a blotchy magenta backdrop, so for those the key also drops anything pinkish.
+KEY_PINK = False
+
+
 def hero_alpha(rgb):
     corners = np.concatenate([rgb[:40, :40].reshape(-1, 3), rgb[-40:, -40:].reshape(-1, 3)])
     distance = np.linalg.norm(rgb - np.median(corners, axis=0), axis=2)
-    return np.clip((distance - 34) / 34, 0, 1)
+    alpha = np.clip((distance - 34) / 34, 0, 1)
+    if KEY_PINK:
+        pink = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
+        alpha = np.minimum(alpha, np.clip((50 - pink) / 25, 0, 1))
+    return alpha
 
 
 def frames_of(name, count):
@@ -247,6 +256,39 @@ def objects():
     return sprites
 
 
+ENEMY_HEIGHTS = {"cop": 175, "donkey": 215}
+
+
+def enemies():
+    """Police on foot and on a donkey: walk both ways, and one strike reused for both directions."""
+    global KEY_PINK
+    KEY_PINK = True
+    for kind, height in ENEMY_HEIGHTS.items():
+        walk = grid_frames(f"cop/{kind}_walk_front.png")[0]
+        ys = np.where(walk[1] > 0.5)[0]
+        walk_scale = height / (ys.max() - ys.min())
+        walk_sheet(f"cop/{kind}_walk_front.png", f"enemy_{kind}_walk_front", walk_scale, False)
+        back = grid_frames(f"cop/{kind}_walk_back.png")[0]
+        ys = np.where(back[1] > 0.5)[0]
+        walk_sheet(f"cop/{kind}_walk_back.png", f"enemy_{kind}_walk_back", height / (ys.max() - ys.min()), False)
+        slash_sheet(f"cop/{kind}_attack.png", f"enemy_{kind}_attack", height)
+    KEY_PINK = False
+
+
+def portrait(name, out, head_share):
+    """A square crop around the head of a reference figure, for the arcade health bars."""
+    rgb = load(name)
+    alpha = hero_alpha(rgb)
+    ys, xs = np.where(alpha > 0.5)
+    top, bottom = ys.min(), ys.max()
+    size = int((bottom - top) * head_share)
+    head = xs[ys < top + size * 0.8]
+    center = int(np.median(head))
+    left = max(0, center - size // 2)
+    crop = Image.fromarray(rgb[max(0, top - size // 10):top - size // 10 + size, left:left + size].astype(np.uint8))
+    crop.resize((112, 112), Image.LANCZOS).save(f"{ART}/portrait_{out}.webp", quality=90, method=6)
+
+
 def knife_icon():
     rgb = load("h3/knife.png")
     pink = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
@@ -290,7 +332,9 @@ def ground():
 
 def place(sprites, width, height, tile_w, tile_h):
     random.seed(1998)
-    spawn = (width // 2, height // 2)
+    # Players start at the top right; the police come in from the bottom left.
+    spawn = (round(width * 0.84), round(height * 0.2))
+    gate = (round(width * 0.12), round(height * 0.84))
     by_kind = {}
     for sprite in sprites:
         by_kind.setdefault(sprite["kind"], []).append(sprite)
@@ -305,6 +349,8 @@ def place(sprites, width, height, tile_w, tile_h):
     def free(x, y, gap):
         if not (30 < x < width - 30 and 60 < y < height - 10):
             return False
+        if any((x - cx) ** 2 + ((y - cy) * 1.4) ** 2 < 330**2 for cx, cy in (spawn, gate)):
+            return False
         return all((x - o["x"]) ** 2 + ((y - o["y"]) * 1.5) ** 2 >= gap**2 for o in placed)
 
     def spot(column, row, sx, sy):
@@ -318,10 +364,12 @@ def place(sprites, width, height, tile_w, tile_h):
     # The church stands by the square the players start on.
     add(by_kind["church"][0], *spot(1, 1, 420, 110))
 
-    farm = ["house"] * 5 + ["barn", "haystack", "haystack", "well", "cart"]
+    farm = ["house", "house", "barn", "haystack", "haystack", "well", "cart", "tree", "tree", "bush"]
     for column in range(3):
         for row in range(3):
             for sx, sy in SPOTS:
+                if random.random() > 0.45:
+                    continue
                 x, y = spot(column, row, sx + random.uniform(-25, 25), sy + random.uniform(-20, 20))
                 kind = random.choice(farm)
                 gap = 230 if kind in ("house", "barn") else 140
@@ -333,21 +381,26 @@ def place(sprites, width, height, tile_w, tile_h):
                         ey = y + random.uniform(-40, 70)
                         if free(ex, ey, 90):
                             add(random.choice(by_kind[extra]), ex, ey, random.uniform(0.85, 1.1))
-    return spawn, placed
+    return spawn, gate, placed
 
 
 sprites = objects()
 hero()
 items()
 knife_icon()
+enemies()
+portrait("h3/ref_front.png", "hero", 0.3)
+portrait("cop/cop_ref_front.png", "cop", 0.3)
+portrait("cop/donkey_ref_front.png", "donkey", 0.32)
 world_width, height, tile_w, tile_h = ground()
-spawn, placed = place(sprites, world_width, height, tile_w, tile_h)
+spawn, gate, placed = place(sprites, world_width, height, tile_w, tile_h)
 
 with open(f"{REPO}/shared/forest.ts", "w") as out:
     out.write(
         "/* Generated by tools/build_art.py. */\n"
         f"export const WORLD_W = {world_width};\nexport const WORLD_H = {height};\n"
         f"export const SPAWN = {{ x: {round(spawn[0])}, y: {round(spawn[1])} }};\n"
+        f"export const ENEMY_GATE = {{ x: {round(gate[0])}, y: {round(gate[1])} }};\n"
         f"export const SPRITES = {json.dumps(sprites)};\n"
         f"export const OBJECTS = {json.dumps(placed)};\n"
     )

@@ -10,6 +10,9 @@ export class Player extends Schema {
   @type("boolean") running = false;
   @type("number") hits = 0;
   @type("number") mana = 100;
+  @type("number") health = 100;
+  @type("boolean") alive = true;
+  @type("number") kills = 0;
   @type("string") area = "city";
   @type("string") weapon = "sword";
   @type(["string"]) inventory = new ArraySchema<string>("sword", "axe");
@@ -36,7 +39,18 @@ export class Shot extends Schema {
   @type("number") vz = 0;
 }
 
+export class Enemy extends Schema {
+  @type("string") kind = "cop";
+  @type("number") x = 0;
+  @type("number") z = 0;
+  @type("number") aim = 0;
+  @type("boolean") moving = false;
+  @type("number") health = 0;
+  @type("number") maxHealth = 0;
+}
+
 export class ArenaState extends Schema {
+  @type({ map: Enemy }) enemies = new MapSchema<Enemy>();
   @type({ map: Player }) players = new MapSchema<Player>();
   @type({ map: Shot }) shots = new MapSchema<Shot>();
   @type({ map: GroundItem }) items = new MapSchema<GroundItem>();
