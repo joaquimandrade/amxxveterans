@@ -290,19 +290,6 @@ export class Renderer {
       context.drawImage(sheet, frame * CELL_W, 0, CELL_W, CELL_H, -CELL_W / 2, -FEET_Y, CELL_W, CELL_H);
     }
     context.restore();
-
-    /* A warning over his head while the baton is up. */
-    if (attacking && enemy.attackTime < enemy.windup) {
-      const pulse = 0.6 + Math.sin(this.time * 24) * 0.4;
-
-      context.font = "48px 'Press Start 2P', monospace";
-      context.textAlign = "center";
-      context.lineWidth = 8;
-      context.strokeStyle = "#000";
-      context.strokeText("!", enemy.x, enemy.y - (big ? 260 : 215));
-      context.fillStyle = `rgba(255,${Math.round(60 + pulse * 120)},40,1)`;
-      context.fillText("!", enemy.x, enemy.y - (big ? 260 : 215));
-    }
   }
 
   private drawShadow(x: number, y: number, radiusX: number, radiusY: number, alpha: number) {

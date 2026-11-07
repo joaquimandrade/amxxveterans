@@ -48,13 +48,9 @@ const ENEMY_KINDS: Record<string, {
   cooldown: number; windup: number; knockback: number;
 }> = {
   cop: { health: 60, speed: 150, radius: 24, reach: 95, damage: 8, cooldown: 1300, windup: 260, knockback: 500 },
-  donkey: { health: 600, speed: 230, radius: 40, reach: 115, damage: 14, cooldown: 1500, windup: 750, knockback: 700 },
+  donkey: { health: 600, speed: 230, radius: 40, reach: 115, damage: 14, cooldown: 1500, windup: 300, knockback: 700 },
 };
 const ENEMY_STUN_MS = 300;
-/* A swing that misses leaves the donkey worn out for a moment. */
-const TIRED_MS = 1000;
-const STRIKE_ARC = 1.0;
-const RECOVER_MS = 250;
 const CHEST_LOOT = ["potion_mana", "potion_mana", "coins", "ring", "helmet", "pouch", "axe"];
 const KNOCKBACK_DECAY = 6;
 
@@ -74,9 +70,6 @@ type Runtime = {
 type EnemyRuntime = {
   lastAttack: number;
   stunnedUntil: number;
-  /** Standing still, baton up, until the swing lands. */
-  busyUntil: number;
-  tiredUntil: number;
   pushX: number;
   pushZ: number;
   lastX: number;
@@ -499,7 +492,7 @@ export class Arena extends Room {
     enemy.health = enemy.maxHealth = stats.health;
     this.state.enemies.set(id, enemy);
     this.enemyRuntime.set(id, {
-      lastAttack: 0, stunnedUntil: 0, busyUntil: 0, tiredUntil: 0, pushX: 0, pushZ: 0,
+      lastAttack: 0, stunnedUntil: 0, pushX: 0, pushZ: 0,
       lastX: enemy.x, lastZ: enemy.z, stuckFor: 0, detourUntil: 0, detourSide: 1,
     });
   }
@@ -562,7 +555,7 @@ export class Arena extends Room {
 
     let moveX = 0;
     let moveZ = 0;
-    const stunned = now < runtime.stunnedUntil || now < runtime.busyUntil || now < runtime.tiredUntil;
+    const stunned = now < runtime.stunnedUntil;
 
     enemy.moving = false;
     if (target && !stunned) {
@@ -591,28 +584,20 @@ export class Arena extends Room {
         enemy.moving = true;
       } else if (now - runtime.lastAttack > stats.cooldown) {
         runtime.lastAttack = now;
-        runtime.busyUntil = now + stats.windup + RECOVER_MS;
-        this.broadcast("enemyAttack", { id, windup: stats.windup });
+        this.broadcast("enemyAttack", { id });
         const victim = target;
-        const aim = enemy.aim;
 
-        /* The swing lands where he aimed when he raised the baton: step out of reach or behind him to dodge. */
         this.clock.setTimeout(() => {
           const still = this.state.enemies.get(id);
 
-          if (!still) return;
+          if (!still || this.clock.currentTime < runtime.stunnedUntil) return;
           const hx = victim.player.x - still.x;
           const hz = victim.player.z - still.z;
-          const distance = Math.hypot(hx, hz) || 1;
 
-          if (victim.player.alive && distance <= reach * 1.05 && angleDifference(Math.atan2(hx, hz), aim) < STRIKE_ARC) {
-            this.hurtPlayer(victim.id, victim.player, stats.damage, (hx / distance) * stats.knockback, (hz / distance) * stats.knockback * DEPTH_SCALE);
-            return;
-          }
-          runtime.tiredUntil = this.clock.currentTime + RECOVER_MS + TIRED_MS;
-          this.clock.setTimeout(() => {
-            if (this.state.enemies.has(id)) this.broadcast("enemyTired", { id, ms: TIRED_MS });
-          }, RECOVER_MS);
+          if (Math.hypot(hx, hz) > reach * 1.15) return;
+          const length = Math.hypot(hx, hz) || 1;
+
+          this.hurtPlayer(victim.id, victim.player, stats.damage, (hx / length) * stats.knockback, (hz / length) * stats.knockback * DEPTH_SCALE);
         }, stats.windup);
       }
     }

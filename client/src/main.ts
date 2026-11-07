@@ -522,12 +522,12 @@ room.onMessage("slash", ({ id }: { id: string }) => {
   if (view) view.slashTime = 0;
 });
 room.onMessage("cast", () => {});
-room.onMessage("enemyAttack", ({ id, windup }: { id: string; windup: number }) => {
+room.onMessage("enemyAttack", ({ id, windup }: { id: string; windup?: number }) => {
   const view = enemyViews.get(id);
 
   if (!view) return;
   view.attackTime = 0;
-  view.windup = windup;
+  view.windup = windup ?? 300;
   view.tiredTime = -1;
 });
 room.onMessage("enemyTired", ({ id, ms }: { id: string; ms: number }) => {
