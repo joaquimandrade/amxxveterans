@@ -9,10 +9,6 @@
     <style>
       html, body { margin: 0; touch-action: none; user-select: none; -webkit-user-select: none; height: 100%; overflow: hidden; background: #0c0e18; }
       canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
-      #help {
-        position: fixed; left: 14px; bottom: 12px; color: #f3e6d0; pointer-events: none; opacity: 0.8;
-        font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; text-shadow: 0 1px 3px #000;
-      }
       #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; }
       /* Arcade health bars: portrait, name and score above a yellow bar on red. */
       #bars { position: fixed; top: 12px; left: 14px; pointer-events: none; display: grid; gap: 10px; font-family: "Press Start 2P", ui-monospace, monospace; }
@@ -28,10 +24,22 @@
       .bar .fill { background: linear-gradient(#fff6a0, #ffd200 45%, #e8a400); }
       #mana { height: 6px; margin-top: 4px; background: #1b2238; border: 2px solid #000; }
       #mana-fill { height: 100%; background: linear-gradient(#8ec0ff, #2a56c8); }
-      body.cutscene #bars, body.cutscene #help { display: none; }
+      body.cutscene #bars { display: none; }
       #talk { position: fixed; inset: 0; background: #000; }
       #talk[hidden] { display: none; }
-      #talk-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+      .talk-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+      #talk-scene-tall { display: none; object-position: center top; }
+      /* On a phone held upright: the tall painting, and a bigger dialogue box across the bottom. */
+      @media (orientation: portrait) {
+        #talk-scene { display: none; }
+        #talk-scene-tall { display: block; }
+        #talk-box { bottom: 0; width: 100vw; min-height: 36vh; grid-template-columns: 1fr; gap: 10px; padding: 18px 18px 34px; border-width: 3px 0 0; outline: none; }
+        #talk-box > img { position: absolute; top: -52px; left: 18px; width: 96px; height: 96px; }
+        #talk-name { margin: 0 0 12px 112px; font-size: 16px; }
+        #talk-english { font-size: 21px; min-height: 4.2em; }
+        #talk-romanian { font-size: 18px; }
+        #talk-next { font-size: 12px; bottom: 12px; right: 18px; }
+      }
       #talk-box {
         position: absolute; left: 50%; bottom: 4vh; transform: translateX(-50%); width: min(980px, calc(100vw - 24px));
         display: grid; grid-template-columns: auto 1fr; gap: 16px; padding: 14px; box-sizing: border-box;
@@ -90,7 +98,8 @@
     </div>
     <div id="brand">Romanian Life</div>
     <section id="talk" hidden>
-      <img id="talk-scene" alt="Virgiliu and the policeman on his donkey, face to face in the village" />
+      <img class="talk-scene" id="talk-scene" alt="Virgiliu and the policeman on his donkey, face to face in the village" />
+      <img class="talk-scene" id="talk-scene-tall" alt="Virgiliu and the policeman on his donkey, face to face in the village" />
       <div id="talk-box">
         <img id="talk-portrait" alt="" />
         <div>
@@ -102,7 +111,6 @@
       </div>
     </section>
     <div id="banner" hidden><div id="banner-text"></div><div id="banner-hint"></div></div>
-    <div id="help">click walk or use · double click run · right click attack · hold right lightning · space fireball · M inventory · wheel zoom</div>
     <section id="panel" hidden>
       <h2>Inventory</h2>
       <p id="panel-hint">Click a weapon to equip it, or a potion to drink it. M closes.</p>

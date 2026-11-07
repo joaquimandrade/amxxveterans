@@ -47,6 +47,11 @@ export type EnemyView = {
   moving: boolean;
   walkDistance: number;
   attackTime: number;
+  /** How long the baton stays up before it comes down, in ms. */
+  windup: number;
+  /** Counts up while the donkey is worn out after a miss; -1 otherwise. */
+  tiredTime: number;
+  tiredMs: number;
   flash: number;
   /** Counts up after death, while the body falls and fades. */
   dying: number;
@@ -67,7 +72,9 @@ export const ITEM_KINDS = [
   "axe", "chest", "chest_open", "potion_mana", "potion_health", "sword", "coins", "ring", "helmet", "pouch",
 ];
 export const ENEMY_KINDS = ["cop", "donkey"];
-const ENEMY_ATTACK_MS = 520;
+/* After the wind-up, the swing itself plays its last three frames in this time. */
+const STRIKE_MS = 250;
+const TIRED_FPS = 7;
 const DYING_MS = 900;
 const HERO_SHEETS = ["idle_front", "idle_back", "walk_front", "walk_back", "slash_front", "slash_back"];
 
@@ -85,6 +92,7 @@ export async function loadArt(base: string) {
       ...ITEM_KINDS.map((kind) => `item_${kind}`),
       ...HERO_SHEETS.flatMap((sheet) => [`hero_${sheet}`, `hero_axe_${sheet}`]),
       ...ENEMY_KINDS.flatMap((kind) => ["walk_front", "walk_back", "attack"].map((sheet) => `enemy_${kind}_${sheet}`)),
+      "enemy_donkey_tired",
     ]),
   );
 
@@ -252,10 +260,16 @@ export class Renderer {
     const dx = Math.sin(enemy.aim);
     const facesCamera = Math.cos(enemy.aim) >= 0;
     const attacking = enemy.attackTime >= 0 && enemy.dying < 0;
-    const sheetName = attacking ? "attack" : `walk_${facesCamera ? "front" : "back"}`;
+    const tired = !attacking && enemy.tiredTime >= 0 && enemy.dying < 0 && this.art.sprites.has(`enemy_${enemy.kind}_tired`);
+    const sheetName = attacking ? "attack" : tired ? "tired" : `walk_${facesCamera ? "front" : "back"}`;
     const sheet = this.art.sprites.get(`enemy_${enemy.kind}_${sheetName}`)!;
+    /* Wind-up: baton high, then starting down just before the strike, so it can be read and dodged. */
+    const windupFrame = enemy.attackTime < enemy.windup * 0.75 ? 0 : 1;
+    const strikeFrame = 2 + Math.floor(((enemy.attackTime - enemy.windup) / STRIKE_MS) * 3);
+    const breathing = [0, 1, 2, 3, 4, 3, 2, 1];
     const frame = attacking
-      ? Math.min(SLASH_FRAMES - 1, Math.floor((enemy.attackTime / ENEMY_ATTACK_MS) * SLASH_FRAMES))
+      ? Math.min(SLASH_FRAMES - 1, enemy.attackTime < enemy.windup ? windupFrame : strikeFrame)
+      : tired ? breathing[Math.floor((enemy.tiredTime / 1000) * TIRED_FPS) % breathing.length]
       : enemy.moving ? Math.floor((enemy.walkDistance / (enemy.kind === "donkey" ? 190 : WALK_STRIDE)) * WALK_FRAMES) % WALK_FRAMES : 0;
     const big = enemy.kind === "donkey";
 
@@ -276,6 +290,19 @@ export class Renderer {
       context.drawImage(sheet, frame * CELL_W, 0, CELL_W, CELL_H, -CELL_W / 2, -FEET_Y, CELL_W, CELL_H);
     }
     context.restore();
+
+    /* A warning over his head while the baton is up. */
+    if (attacking && enemy.attackTime < enemy.windup) {
+      const pulse = 0.6 + Math.sin(this.time * 24) * 0.4;
+
+      context.font = "48px 'Press Start 2P', monospace";
+      context.textAlign = "center";
+      context.lineWidth = 8;
+      context.strokeStyle = "#000";
+      context.strokeText("!", enemy.x, enemy.y - (big ? 260 : 215));
+      context.fillStyle = `rgba(255,${Math.round(60 + pulse * 120)},40,1)`;
+      context.fillText("!", enemy.x, enemy.y - (big ? 260 : 215));
+    }
   }
 
   private drawShadow(x: number, y: number, radiusX: number, radiusY: number, alpha: number) {

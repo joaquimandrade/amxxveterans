@@ -260,7 +260,7 @@ ENEMY_HEIGHTS = {"cop": 175, "donkey": 215}
 
 
 def enemies():
-    """Police on foot and on a donkey: walk both ways, and one strike reused for both directions."""
+    """Police on foot and on a donkey: walk both ways, one strike reused for both directions, and the donkey's rest."""
     global KEY_PINK
     KEY_PINK = True
     for kind, height in ENEMY_HEIGHTS.items():
@@ -272,6 +272,10 @@ def enemies():
         ys = np.where(back[1] > 0.5)[0]
         walk_sheet(f"cop/{kind}_walk_back.png", f"enemy_{kind}_walk_back", height / (ys.max() - ys.min()), False)
         slash_sheet(f"cop/{kind}_attack.png", f"enemy_{kind}_attack", height)
+    # The worn-out rest was repainted over the donkey's attack sheet, so it shares its scale.
+    recover = frames_of("cop/donkey_attack.png", 5)[3][1]
+    ys = np.where(recover > 0.5)[0]
+    hero_sheet("cop/donkey_tired.png", "enemy_donkey_tired", 5, ENEMY_HEIGHTS["donkey"] / (ys.max() - ys.min()))
     KEY_PINK = False
 
 
@@ -294,6 +298,9 @@ def talk_scene():
     painting = Image.open(f"{SOURCE}/cop/talk.png").convert("RGB")
     painting.resize((1600, round(1600 * painting.height / painting.width)), Image.LANCZOS).save(
         f"{ART}/scene_talk.webp", quality=86, method=6)
+    tall = Image.open(f"{SOURCE}/cop/talk_tall.png").convert("RGB")
+    tall.resize((900, round(900 * tall.height / tall.width)), Image.LANCZOS).save(
+        f"{ART}/scene_talk_tall.webp", quality=86, method=6)
     scale = painting.width / 1100
     half = 62
     # Face centres, measured on an 1100 wide preview of the painting.
@@ -324,8 +331,8 @@ SPOTS = [
 
 
 GRID = 3
-# The fight only uses the middle of the 3 x 3 village: two tiles across, centred on the crossroads square.
-CROP = 0.5
+# How much of a tile to trim off each edge of the 3 x 3 village; its middle is the crossroads square.
+CROP = 0.0
 
 
 def ground():

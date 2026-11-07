@@ -1,5 +1,5 @@
 import { Client, type Room } from "@colyseus/sdk";
-import { HOTSPOTS, insidePolygon } from "../../shared/areas.ts";
+import { AREAS, HOTSPOTS, insidePolygon } from "../../shared/areas.ts";
 import { SPAWN } from "../../shared/forest.ts";
 import { type Camera, type EnemyView, type Pickable, type PlayerView, Renderer, artUrl, loadArt } from "./render.ts";
 
@@ -50,7 +50,7 @@ const DIALOGUE = [
     romanian: "Mă cac pe morții tăi.",
   },
 ];
-const ENEMY_ATTACK_MS = 520;
+const STRIKE_MS = 250;
 const DYING_MS = 900;
 const ITEM_NAMES: Record<string, string> = {
   sword: "Knife", axe: "Battle axe", potion_mana: "Mana potion", coins: "Gold coins",
@@ -97,6 +97,7 @@ const [art, room] = await Promise.all([
 const renderer = new Renderer(canvas, art);
 heroPortrait.src = artUrl(base, "portrait_hero");
 talkScene.src = artUrl(base, "scene_talk");
+(document.getElementById("talk-scene-tall") as HTMLImageElement).src = artUrl(base, "scene_talk_tall");
 
 /* Intro: the camera flies in on the two of them, then the dialogue, then the fight. */
 let stage: "zoom" | "talk" | "fight" | "over" = "zoom";
@@ -167,7 +168,10 @@ function updateIntro(dt: number, self: PlayerView | undefined, enemy: EnemyView 
 
   camera.x = (self.x + enemy.x) / 2;
   camera.y = (self.y + enemy.y) / 2 - 90;
-  camera.zoom = ZOOM_MIN + (1.15 - ZOOM_MIN) * smooth;
+  /* Start as wide as the painting allows, so no black shows round the edges. */
+  const widest = Math.max(ZOOM_MIN, innerWidth / AREAS.city.width, innerHeight / AREAS.city.height) * 1.03;
+
+  camera.zoom = widest + (1.15 - widest) * smooth;
   if (stage === "zoom" && stageTime > ZOOM_SECONDS + 0.4) {
     stage = "talk";
     talk.hidden = false;
@@ -257,7 +261,10 @@ function updateEnemies(enemies: Map<string, EnemyState>, dt: number) {
     let view = enemyViews.get(id);
 
     if (!view) {
-      view = { kind: enemy.kind, x: enemy.x, y: enemy.z, aim: enemy.aim, moving: false, walkDistance: 0, attackTime: -1, flash: 0, dying: -1 };
+      view = {
+        kind: enemy.kind, x: enemy.x, y: enemy.z, aim: enemy.aim, moving: false, walkDistance: 0,
+        attackTime: -1, windup: 300, tiredTime: -1, tiredMs: 0, flash: 0, dying: -1,
+      };
       enemyViews.set(id, view);
     }
     const follow = 1 - Math.exp(-18 * dt);
@@ -274,7 +281,11 @@ function updateEnemies(enemies: Map<string, EnemyState>, dt: number) {
     view.flash = Math.max(0, view.flash - dt * 4);
     if (view.attackTime >= 0) {
       view.attackTime += dt * 1000;
-      if (view.attackTime > ENEMY_ATTACK_MS) view.attackTime = -1;
+      if (view.attackTime > view.windup + STRIKE_MS) view.attackTime = -1;
+    }
+    if (view.tiredTime >= 0) {
+      view.tiredTime += dt * 1000;
+      if (view.tiredTime > view.tiredMs) view.tiredTime = -1;
     }
     if (view.dying >= 0) view.dying += dt * 1000;
     if (view.dying > DYING_MS || (view.dying < 0 && !enemies.has(id))) enemyViews.delete(id);
@@ -422,10 +433,29 @@ function leftPress(timeStamp: number, allowRun: boolean) {
   }
 }
 
-/* On a phone, a tap walks, a double tap runs, and a second finger acts as the right mouse button. */
+/** The enemy whose painted body is under the given screen point. */
+function enemyAt(screenX: number, screenY: number) {
+  const point = renderer.toWorld(camera, screenX, screenY);
+
+  return [...enemyViews.values()].find((enemy) => {
+    const halfWidth = enemy.kind === "donkey" ? 110 : 60;
+    const height = enemy.kind === "donkey" ? 230 : 190;
+
+    return enemy.dying < 0 && Math.abs(point.x - enemy.x) < halfWidth && point.y < enemy.y + 30 && point.y > enemy.y - height;
+  });
+}
+
+/* On a phone, a tap walks, a double tap runs (or attacks, on the policeman), and a second finger acts as the right mouse button. */
 function touchPress(timeStamp: number) {
   const self = views.get(room.sessionId);
+  const enemy = enemyAt(pointer.x, pointer.y);
 
+  if (fingers.size < 2 && enemy && self && timeStamp - lastLeftClick < DOUBLE_CLICK_MS) {
+    room.send("move", { x: self.x, z: self.y });
+    room.send("slash", Math.atan2(enemy.x - self.x, enemy.y - self.y));
+    lastLeftClick = -Infinity;
+    return;
+  }
   if (fingers.size >= 2) {
     if (self) room.send("move", { x: self.x, z: self.y });
     startRightPress();
@@ -492,10 +522,20 @@ room.onMessage("slash", ({ id }: { id: string }) => {
   if (view) view.slashTime = 0;
 });
 room.onMessage("cast", () => {});
-room.onMessage("enemyAttack", ({ id }: { id: string }) => {
+room.onMessage("enemyAttack", ({ id, windup }: { id: string; windup: number }) => {
   const view = enemyViews.get(id);
 
-  if (view) view.attackTime = 0;
+  if (!view) return;
+  view.attackTime = 0;
+  view.windup = windup;
+  view.tiredTime = -1;
+});
+room.onMessage("enemyTired", ({ id, ms }: { id: string; ms: number }) => {
+  const view = enemyViews.get(id);
+
+  if (!view) return;
+  view.tiredTime = 0;
+  view.tiredMs = ms;
 });
 room.onMessage("enemyHit", ({ id }: { id: string }) => {
   const view = enemyViews.get(id);
@@ -503,7 +543,9 @@ room.onMessage("enemyHit", ({ id }: { id: string }) => {
   if (view) view.flash = 1;
 });
 room.onMessage("enemyDown", ({ id, kind, x, z, aim }: { id: string; kind: string; x: number; z: number; aim: number }) => {
-  const view = enemyViews.get(id) ?? { kind, x, y: z, aim, moving: false, walkDistance: 0, attackTime: -1, flash: 0, dying: 0 };
+  const view = enemyViews.get(id) ?? {
+    kind, x, y: z, aim, moving: false, walkDistance: 0, attackTime: -1, windup: 300, tiredTime: -1, tiredMs: 0, flash: 0, dying: 0,
+  };
 
   view.dying = 0;
   view.moving = false;
