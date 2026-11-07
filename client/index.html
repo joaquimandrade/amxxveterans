@@ -34,8 +34,9 @@
         #talk-scene { display: none; }
         #talk-scene-tall { display: block; }
         #talk-box { bottom: 0; width: 100vw; min-height: 36vh; grid-template-columns: 1fr; gap: 10px; padding: 18px 18px 34px; border-width: 3px 0 0; outline: none; }
-        #talk-box > img { position: absolute; top: -52px; left: 18px; width: 96px; height: 96px; }
-        #talk-name { margin: 0 0 12px 112px; font-size: 16px; }
+        /* The portrait sticks out above the box, clear of the text below the name. */
+        #talk-box > img { position: absolute; top: -50px; left: 18px; width: 84px; height: 84px; }
+        #talk-name { margin: 0 0 18px 104px; font-size: 16px; }
         #talk-english { font-size: 21px; min-height: 4.2em; }
         #talk-romanian { font-size: 18px; }
         #talk-next { font-size: 12px; bottom: 12px; right: 18px; }
