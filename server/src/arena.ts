@@ -48,7 +48,7 @@ const ENEMY_KINDS: Record<string, {
   cooldown: number; windup: number; knockback: number;
 }> = {
   cop: { health: 60, speed: 150, radius: 24, reach: 95, damage: 8, cooldown: 1300, windup: 260, knockback: 500 },
-  donkey: { health: 600, speed: 230, radius: 40, reach: 115, damage: 14, cooldown: 1500, windup: 300, knockback: 700 },
+  donkey: { health: 600, speed: 230, radius: 60, reach: 150, damage: 14, cooldown: 1500, windup: 300, knockback: 700 },
 };
 const ENEMY_STUN_MS = 300;
 const CHEST_LOOT = ["potion_mana", "potion_mana", "coins", "ring", "helmet", "pouch", "axe"];
@@ -618,6 +618,19 @@ export class Arena extends Room {
       enemy.x = object.x + (dx / distance) * minimum;
       enemy.z = object.y + (dz / distance) * minimum;
     }
+
+    /* Never stand inside a hero: the donkey's body keeps them apart. */
+    this.state.players.forEach((player) => {
+      if (!player.alive || player.area !== "city") return;
+      const dx = enemy.x - player.x;
+      const dz = enemy.z - player.z;
+      const distance = Math.hypot(dx, dz) || 0.001;
+      const minimum = stats.radius + PLAYER_RADIUS;
+
+      if (distance >= minimum) return;
+      enemy.x = player.x + (dx / distance) * minimum;
+      enemy.z = player.z + (dz / distance) * minimum;
+    });
 
     /* Barely moving while trying to walk means something is in the way: go round it for a moment. */
     const progress = Math.hypot(enemy.x - runtime.lastX, enemy.z - runtime.lastZ);

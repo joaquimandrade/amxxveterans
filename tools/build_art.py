@@ -93,7 +93,7 @@ def hero_sheet(name, out, count, scale, keep=None):
     sheet.save(f"{ART}/{out}.webp", quality=88, method=6)
 
 
-def grid_frames(name):
+def grid_frames(name, anchor="torso"):
     """Walk sheets are a 4 by 2 grid painted over motion-captured poses."""
     rgb = load(name)
     alpha = hero_alpha(rgb)
@@ -111,12 +111,16 @@ def grid_frames(name):
         ys, xs = np.where(main)
         top_y, bottom_y = ys.min(), ys.max() + 1
         torso = (ys > top_y + (bottom_y - top_y) * 0.15) & (ys < top_y + (bottom_y - top_y) * 0.5)
-        frames.append((rgb[top:bottom, left:right], main * alpha[top:bottom, left:right], float(np.median(xs[torso])), bottom_y))
+        center = float(np.median(xs[torso]))
+        if anchor == "body":
+            # A rider sits on the back of his mount: centre on the whole figure, like the attack sheets do.
+            center = float(np.median(xs[ys > top_y + (bottom_y - top_y) * 0.55]))
+        frames.append((rgb[top:bottom, left:right], main * alpha[top:bottom, left:right], center, bottom_y))
     return frames
 
 
-def walk_sheet(name, out, scale, replace_first):
-    frames = grid_frames(name)
+def walk_sheet(name, out, scale, replace_first, anchor="torso"):
+    frames = grid_frames(name, anchor)
     if replace_first:
         frames[0] = frames[4]
     baseline = np.median([frame[3] for frame in frames])
@@ -267,10 +271,11 @@ def enemies():
         walk = grid_frames(f"cop/{kind}_walk_front.png")[0]
         ys = np.where(walk[1] > 0.5)[0]
         walk_scale = height / (ys.max() - ys.min())
-        walk_sheet(f"cop/{kind}_walk_front.png", f"enemy_{kind}_walk_front", walk_scale, False)
+        anchor = "body" if kind == "donkey" else "torso"
+        walk_sheet(f"cop/{kind}_walk_front.png", f"enemy_{kind}_walk_front", walk_scale, False, anchor)
         back = grid_frames(f"cop/{kind}_walk_back.png")[0]
         ys = np.where(back[1] > 0.5)[0]
-        walk_sheet(f"cop/{kind}_walk_back.png", f"enemy_{kind}_walk_back", height / (ys.max() - ys.min()), False)
+        walk_sheet(f"cop/{kind}_walk_back.png", f"enemy_{kind}_walk_back", height / (ys.max() - ys.min()), False, anchor)
         slash_sheet(f"cop/{kind}_attack.png", f"enemy_{kind}_attack", height)
     # The worn-out rest was repainted over the donkey's attack sheet, so it shares its scale.
     recover = frames_of("cop/donkey_attack.png", 5)[3][1]
