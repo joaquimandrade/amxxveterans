@@ -1,6 +1,7 @@
 import { Client, type Room } from "@colyseus/sdk";
 import { AREAS, HOTSPOTS, insidePolygon } from "../../shared/areas.ts";
 import { SPAWN } from "../../shared/forest.ts";
+import { sounds, unlockSound } from "./sound.ts";
 import { type Camera, type EnemyView, type Pickable, type PlayerView, Renderer, artUrl, loadArt } from "./render.ts";
 
 type PlayerState = {
@@ -465,6 +466,7 @@ function touchPress(timeStamp: number) {
 }
 
 addEventListener("pointerdown", (event) => {
+  unlockSound();
   if (stage === "talk") {
     advanceTalk();
     return;
@@ -492,6 +494,7 @@ addEventListener("pointerup", pointerReleased);
 addEventListener("pointercancel", pointerReleased);
 addEventListener("blur", stopHolding);
 addEventListener("keydown", (event) => {
+  unlockSound();
   if (stage === "talk" && (event.code === "Space" || event.code === "Enter")) {
     if (!event.repeat) advanceTalk();
     return;
@@ -509,25 +512,33 @@ addEventListener("wheel", (event) => {
 addEventListener("resize", () => renderer.resize());
 
 room.onMessage("explode", ({ x, z, area }: { x: number; z: number; area: string }) => {
-  if (area === currentArea) renderer.explode(x, z);
+  if (area !== currentArea) return;
+  renderer.explode(x, z);
+  sounds.explode();
 });
 room.onMessage("hit", ({ id }: { id: string }) => {
   const view = views.get(id);
 
-  if (view) view.flash = 1;
+  if (!view) return;
+  view.flash = 1;
+  sounds.hurt();
 });
 room.onMessage("slash", ({ id }: { id: string }) => {
   const view = views.get(id);
 
-  if (view) view.slashTime = 0;
+  if (!view) return;
+  view.slashTime = 0;
+  if (view.weapon === "axe") sounds.axe();
+  else sounds.knife();
 });
-room.onMessage("cast", () => {});
+room.onMessage("cast", () => sounds.fireball());
 room.onMessage("enemyAttack", ({ id, windup }: { id: string; windup?: number }) => {
   const view = enemyViews.get(id);
 
   if (!view) return;
   view.attackTime = 0;
   view.windup = windup ?? 300;
+  sounds.baton(view.windup);
   view.tiredTime = -1;
 });
 room.onMessage("enemyTired", ({ id, ms }: { id: string; ms: number }) => {
@@ -541,6 +552,7 @@ room.onMessage("enemyHit", ({ id }: { id: string }) => {
   const view = enemyViews.get(id);
 
   if (view) view.flash = 1;
+  sounds.strike();
 });
 room.onMessage("enemyDown", ({ id, kind, x, z, aim }: { id: string; kind: string; x: number; z: number; aim: number }) => {
   const view = enemyViews.get(id) ?? {
@@ -550,9 +562,12 @@ room.onMessage("enemyDown", ({ id, kind, x, z, aim }: { id: string; kind: string
   view.dying = 0;
   view.moving = false;
   enemyViews.set(id, view);
+  sounds.knockout();
 });
 room.onMessage("bolt", (bolt: { area: string; fromX: number; fromZ: number; toX: number; toZ: number }) => {
-  if (bolt.area === currentArea) renderer.addBolt(bolt.fromX, bolt.fromZ, bolt.toX, bolt.toZ);
+  if (bolt.area !== currentArea) return;
+  renderer.addBolt(bolt.fromX, bolt.fromZ, bolt.toX, bolt.toZ);
+  sounds.bolt();
 });
 
 renderer.resize();
