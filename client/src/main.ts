@@ -1,6 +1,7 @@
 import { Client, type Room } from "@colyseus/sdk";
 import { AREAS, HOTSPOTS, insidePolygon } from "../../shared/areas.ts";
 import { SPAWN } from "../../shared/forest.ts";
+import { playMusic, stopMusic } from "./music.ts";
 import { sounds, unlockSound } from "./sound.ts";
 import { type Camera, type EnemyView, type Pickable, type PlayerView, Renderer, artUrl, loadArt } from "./render.ts";
 
@@ -100,14 +101,16 @@ heroPortrait.src = artUrl(base, "portrait_hero");
 talkScene.src = artUrl(base, "scene_talk");
 (document.getElementById("talk-scene-tall") as HTMLImageElement).src = artUrl(base, "scene_talk_tall");
 
-/* Intro: the camera flies in on the two of them, then the dialogue, then the fight. */
-let stage: "zoom" | "talk" | "fight" | "over" = "zoom";
+/* Intro: a title screen (the press that starts it also unlocks sound), the camera flying in on the
+   two of them, then the dialogue, then the fight. Each part has its own music. */
+let stage: "title" | "zoom" | "talk" | "fight" | "over" = "title";
 let stageTime = 0;
 let line = 0;
 let typed = 0;
 let zoomedOut = false;
 
-function showBanner(text: string, hint: string, seconds: number) {
+function showBanner(text: string, hint: string, seconds: number, title = false) {
+  banner.classList.toggle("title", title);
   bannerText.textContent = text;
   bannerHint.textContent = hint;
   banner.hidden = false;
@@ -142,6 +145,7 @@ function advanceTalk() {
   document.body.classList.remove("cutscene");
   room.send("ready");
   showBanner("FIGHT!", "", 1.3);
+  playMusic("fight");
 }
 
 function updateTalk(dt: number) {
@@ -163,7 +167,7 @@ function updateIntro(dt: number, self: PlayerView | undefined, enemy: EnemyView 
     return false;
   }
   if (!self || !enemy) return true;
-  stageTime += dt;
+  if (stage !== "title") stageTime += dt;
   const ease = Math.min(1, stageTime / ZOOM_SECONDS);
   const smooth = ease * ease * (3 - 2 * ease);
 
@@ -177,14 +181,25 @@ function updateIntro(dt: number, self: PlayerView | undefined, enemy: EnemyView 
     stage = "talk";
     talk.hidden = false;
     showLine();
+    playMusic("tension");
   }
   if (stage === "talk") updateTalk(dt);
   return true;
 }
 
+function pressStart() {
+  stage = "zoom";
+  banner.hidden = true;
+  unlockSound();
+  playMusic("intro");
+}
+
+showBanner("ROMANIAN LIFE", "press start", 0, true);
+
 function checkEnd(phase: string) {
   if (stage !== "fight" || (phase !== "won" && phase !== "lost")) return;
   stage = "over";
+  stopMusic(1.5);
   showBanner(phase === "won" ? "VICTORY!" : "DEFEAT", "click to fight again", 0);
 }
 const camera: Camera = { x: SPAWN.x, y: SPAWN.y, zoom: 0.8 };
@@ -467,6 +482,10 @@ function touchPress(timeStamp: number) {
 
 addEventListener("pointerdown", (event) => {
   unlockSound();
+  if (stage === "title") {
+    pressStart();
+    return;
+  }
   if (stage === "talk") {
     advanceTalk();
     return;
@@ -495,6 +514,10 @@ addEventListener("pointercancel", pointerReleased);
 addEventListener("blur", stopHolding);
 addEventListener("keydown", (event) => {
   unlockSound();
+  if (stage === "title") {
+    if (!event.repeat) pressStart();
+    return;
+  }
   if (stage === "talk" && (event.code === "Space" || event.code === "Enter")) {
     if (!event.repeat) advanceTalk();
     return;
@@ -514,14 +537,12 @@ addEventListener("resize", () => renderer.resize());
 room.onMessage("explode", ({ x, z, area }: { x: number; z: number; area: string }) => {
   if (area !== currentArea) return;
   renderer.explode(x, z);
-  sounds.explode();
 });
 room.onMessage("hit", ({ id }: { id: string }) => {
   const view = views.get(id);
 
   if (!view) return;
   view.flash = 1;
-  sounds.hurt();
 });
 room.onMessage("slash", ({ id }: { id: string }) => {
   const view = views.get(id);
@@ -531,7 +552,7 @@ room.onMessage("slash", ({ id }: { id: string }) => {
   if (view.weapon === "axe") sounds.axe();
   else sounds.knife();
 });
-room.onMessage("cast", () => sounds.fireball());
+room.onMessage("cast", () => {});
 room.onMessage("enemyAttack", ({ id, windup }: { id: string; windup?: number }) => {
   const view = enemyViews.get(id);
 
@@ -552,7 +573,6 @@ room.onMessage("enemyHit", ({ id }: { id: string }) => {
   const view = enemyViews.get(id);
 
   if (view) view.flash = 1;
-  sounds.strike();
 });
 room.onMessage("enemyDown", ({ id, kind, x, z, aim }: { id: string; kind: string; x: number; z: number; aim: number }) => {
   const view = enemyViews.get(id) ?? {
@@ -562,12 +582,10 @@ room.onMessage("enemyDown", ({ id, kind, x, z, aim }: { id: string; kind: string
   view.dying = 0;
   view.moving = false;
   enemyViews.set(id, view);
-  sounds.knockout();
 });
 room.onMessage("bolt", (bolt: { area: string; fromX: number; fromZ: number; toX: number; toZ: number }) => {
   if (bolt.area !== currentArea) return;
   renderer.addBolt(bolt.fromX, bolt.fromZ, bolt.toX, bolt.toZ);
-  sounds.bolt();
 });
 
 renderer.resize();
