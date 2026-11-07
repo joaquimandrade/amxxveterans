@@ -35,14 +35,14 @@ const HOLD_MS = 280;
 const BOLT_REPEAT_MS = 560;
 const PICK_RADIUS = 58;
 const DEPTH_SCALE = 0.72;
-const ENEMY_NAMES: Record<string, string> = { cop: "POLÍCIA", donkey: "POLÍCIA" };
+const ENEMY_NAMES: Record<string, string> = { cop: "AGENTE", donkey: "AGENTE" };
 const ZOOM_SECONDS = 3.2;
 const FIGHT_ZOOM = 0.8;
 const TYPE_SPEED = 45;
 /* The face-off before the fight: English first, the Portuguese under it. */
 const DIALOGUE = [
   {
-    who: "POLÍCIA", portrait: "portrait_donkey",
+    who: "AGENTE", portrait: "portrait_donkey",
     english: "The council already warned you that you have to leave this land. We'll pay you the expropriation money. Lithium is needed for humanity.",
     translation: "Já foste avisado pela câmara que tens de sair deste terreno. Vamos pagar-te o dinheiro da expropriação. O lítio é necessário para a humanidade.",
   },
