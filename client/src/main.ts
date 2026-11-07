@@ -29,7 +29,7 @@ const BOLT_REPEAT_MS = 560;
 const PICK_RADIUS = 58;
 const DEPTH_SCALE = 0.72;
 const ITEM_NAMES: Record<string, string> = {
-  sword: "Sword", axe: "Battle axe", potion_mana: "Mana potion", coins: "Gold coins",
+  sword: "Knife", axe: "Battle axe", potion_mana: "Mana potion", coins: "Gold coins",
   ring: "Gold ring", helmet: "Helmet", pouch: "Leather pouch",
 };
 const hud = document.getElementById("hud")!;

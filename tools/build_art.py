@@ -3,7 +3,7 @@
 Usage: build_art.py SOURCE_DIR REPO_DIR
 Sources: city/ground.png, city/objects.png, items.png, walk_front, walk_back,
 slash_front and slash_back (each also with an axe_ prefix), and the walk
-cycles pw_front, pw_back, pa_front and pa_back.
+cycles pw_front, pw_back, pa_front and pa_back. The current hero's sheets live in h3/.
 """
 import json
 import math
@@ -123,25 +123,48 @@ def walk_sheet(name, out, scale, replace_first):
     sheet.save(f"{ART}/{out}.webp", quality=88, method=6)
 
 
+def single_sheet(frame, out, scale):
+    """One-cell sheet (idle pose) from a single frame."""
+    rgb, mask, center = frame[:3]
+    ys = np.where(mask > 0.5)[0]
+    pixels = np.dstack([rgb, mask * 255]).astype(np.uint8)
+    sprite = Image.fromarray(pixels, "RGBA")
+    sprite = sprite.resize((round(sprite.width * scale), round(sprite.height * scale)), Image.LANCZOS)
+    sheet = Image.new("RGBA", (CELL_W, CELL_H), (0, 0, 0, 0))
+    bottom = (ys.max() + 1) * scale
+    sheet.paste(sprite, (round(CELL_W / 2 - center * scale), round(FEET_Y - bottom)), sprite)
+    sheet.save(f"{ART}/{out}.webp", quality=88, method=6)
+
+
+def slash_sheet(name, out, standing_height):
+    """Scaled so the recovering pose, with the weapon low, matches the walking height."""
+    frames = frames_of(name, 5)
+    recover = frames[3][1]
+    ys = np.where(recover > 0.5)[0]
+    scale = standing_height / (ys.max() - ys.min())
+    hero_sheet(name, out, 5, scale)
+
+
 def hero():
-    standing = grid_frames("pw_front.png")[0]
-    ys = np.where(standing[1] > 0.5)[0]
+    """The hero with the hat: walks over motion capture, attacks, idles, with knife or axe."""
+    folder = "h3/"
+    walk = grid_frames(f"{folder}pw_front.png")[0]
+    ys = np.where(walk[1] > 0.5)[0]
     walk_scale = HERO_HEIGHT / (ys.max() - ys.min())
 
-    for walk_prefix, prefix, out in (("pw", "", "hero"), ("pa", "axe_", "hero_axe")):
-        walk_sheet(f"{walk_prefix}_front.png", f"{out}_walk_front", walk_scale, False)
-        walk_sheet(f"{walk_prefix}_back.png", f"{out}_walk_back", walk_scale, True)
+    for walk_prefix, slash_prefix, out in (("pw", "", "hero"), ("pa", "axe_", "hero_axe")):
+        walk_sheet(f"{folder}{walk_prefix}_front.png", f"{out}_walk_front", walk_scale, False)
+        walk_sheet(f"{folder}{walk_prefix}_back.png", f"{out}_walk_back", walk_scale, False)
+        slash_sheet(f"{folder}{slash_prefix}slash_front.png", f"{out}_slash_front", HERO_HEIGHT)
+        # The painted back-facing attacks turned to face the camera, so both directions use the front one.
+        slash_sheet(f"{folder}{slash_prefix}slash_front.png", f"{out}_slash_back", HERO_HEIGHT)
 
-        scale = HERO_HEIGHT / frames_of(f"{prefix}walk_front.png", 6)[0][1].shape[0]
-
-        for name, sheet, count in (
-            ("walk_front", "idle_front", 1),
-            ("walk_back", "idle_back", 1),
-            ("slash_front", "slash_front", 5),
-            ("slash_back", "slash_back", 5),
-        ):
-            source = 6 if count == 1 else count
-            hero_sheet(f"{prefix}{name}.png", f"{out}_{sheet}", source, scale, count)
+    for side in ("front", "back"):
+        reference = frames_of(f"{folder}ref_{side}.png", 1)[0]
+        ys = np.where(reference[1] > 0.5)[0]
+        single_sheet(reference, f"hero_idle_{side}", HERO_HEIGHT / (ys.max() - ys.min()))
+        axe = grid_frames(f"{folder}pa_{side}.png")[0]
+        single_sheet(axe, f"hero_axe_idle_{side}", walk_scale)
 
 
 # Item centres on a 1376 by 386 preview, and the height each one is drawn at.
@@ -249,6 +272,20 @@ def woman():
     sprite.resize((round(sprite.width * scale), 170), Image.LANCZOS).save(f"{ART}/npc_woman.webp", quality=90, method=6)
 
 
+def knife_icon():
+    rgb = load("h3/knife.png")
+    pink = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
+    labels, found = ndimage.label(ndimage.binary_opening(pink < 60))
+    sizes = ndimage.sum(np.ones_like(labels), labels, range(1, found + 1))
+    label = int(np.argmax(sizes)) + 1
+    area = ndimage.find_objects(labels)[label - 1]
+    alpha = ndimage.gaussian_filter((labels[area] == label).astype(np.float32), 0.8)
+    alpha *= np.clip(1 - (pink[area] - 30) / 40, 0, 1)
+    icon = Image.fromarray(np.dstack([rgb[area], alpha * 255]).astype(np.uint8), "RGBA")
+    icon.thumbnail((128, 128), Image.LANCZOS)
+    icon.save(f"{ART}/icon_sword.webp", quality=88, method=6)
+
+
 def ground():
     """Mirrors the street corner into a grid, so the sidewalks form city blocks."""
     source = Image.open(f"{SOURCE}/city/ground.png").convert("RGB")
@@ -337,6 +374,7 @@ mansion()
 woman()
 hero()
 items()
+knife_icon()
 world_width, height, tile_w, tile_h = ground()
 spawn, placed = place(sprites, world_width, height, tile_w, tile_h)
 
