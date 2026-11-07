@@ -1,4 +1,4 @@
-import { AREAS, HOTSPOTS, type Hotspot, MANSION, NPCS } from "../../shared/areas.ts";
+import { AREAS, HOTSPOTS, type Hotspot, type Npc, NPCS } from "../../shared/areas.ts";
 import { OBJECTS, SPRITES } from "../../shared/forest.ts";
 
 declare const __BUILD__: string;
@@ -13,6 +13,8 @@ const WALK_STRIDE = 150;
 const RUN_STRIDE = 215;
 const SLASH_MS = 420;
 const MAX_PARTICLES = 500;
+/* The village is painted in late afternoon light; the dark, the lamps and the rain are for night maps. */
+const NIGHT_TIME = false;
 const NIGHT = "rgba(7,9,22,0.84)";
 const LIGHT_SCALE = 0.25;
 const RAIN_DROPS = 150;
@@ -60,10 +62,8 @@ export async function loadArt(base: string) {
   const sprites = new Map(
     await load([
       "ground",
-      "mansion",
       ...NPCS.map((npc) => npc.sprite),
-      "room_hall",
-      "room_upper",
+      ...HOTSPOTS.map((hotspot) => hotspot.image.sprite),
       ...SPRITES.map((sprite) => sprite.name),
       ...ITEM_KINDS.map((kind) => `item_${kind}`),
       ...HERO_SHEETS.flatMap((sheet) => [`hero_${sheet}`, `hero_axe_${sheet}`]),
@@ -229,19 +229,6 @@ export class Renderer {
     context.globalAlpha = 1;
   }
 
-  private drawMansion(heroes: PlayerView[]) {
-    const context = this.context;
-    const image = this.art.sprites.get("mansion")!;
-    const left = MANSION.x - image.width / 2;
-    const top = MANSION.y - image.height + 8;
-    const self = heroes.find((hero) => hero.isSelf);
-    const covers = self && self.y < MANSION.y - 40 && self.y > top && Math.abs(self.x - MANSION.x) < image.width / 2;
-
-    context.globalAlpha = covers ? 0.42 : 1;
-    context.drawImage(image, left, top);
-    context.globalAlpha = 1;
-  }
-
   private drawShadow(x: number, y: number, radiusX: number, radiusY: number, alpha: number) {
     const context = this.context;
 
@@ -300,10 +287,8 @@ export class Renderer {
 
     if (cached) return cached;
 
-    const city = hotspot.area === "city";
-    const source = this.art.sprites.get(city ? "mansion" : `room_${hotspot.area}`)!;
-    const sourceX = city ? MANSION.x - source.width / 2 : 0;
-    const sourceY = city ? MANSION.y - source.height + 8 : 0;
+    const source = this.art.sprites.get(hotspot.image.sprite)!;
+    const { x: sourceX, y: sourceY } = hotspot.image;
     const margin = 14;
     const xs = hotspot.outline.map(([x]) => x);
     const ys = hotspot.outline.map(([, y]) => y);
@@ -406,7 +391,7 @@ export class Renderer {
   }
 
   /** Still sprite with a slight breathing motion. */
-  private drawNpc(npc: (typeof NPCS)[number]) {
+  private drawNpc(npc: Npc) {
     const context = this.context;
     const image = this.art.sprites.get(npc.sprite)!;
     const breath = 1 + Math.sin(this.time * 1.8 + npc.x) * 0.006;
@@ -499,8 +484,6 @@ export class Renderer {
       if (object.light) hole(object.x, object.y - 170, LAMP_RADIUS, 0.95);
       else if (object.radius > 60) hole(object.x, object.y - 170 * object.scale, 170, 0.5);
     }
-    hole(MANSION.x - 170, MANSION.y - 60, 230, 0.8);
-    hole(MANSION.x, MANSION.y - 320, 380, 0.45);
     for (const hero of heroes) hole(hero.x, hero.y - 80, HERO_LIGHT_RADIUS, hero.isSelf ? 0.9 : 0.7);
     for (const shot of shots) hole(shot.x, shot.y - 60, 300, 1);
     for (const bolt of this.bolts) {
@@ -561,7 +544,7 @@ export class Renderer {
     );
 
     shade.addColorStop(0, "rgba(20,12,5,0)");
-    shade.addColorStop(1, "rgba(2,3,10,0.55)");
+    shade.addColorStop(1, NIGHT_TIME ? "rgba(2,3,10,0.55)" : "rgba(40,22,8,0.35)");
     context.fillStyle = shade;
     context.fillRect(0, 0, width, height);
   }
@@ -585,13 +568,12 @@ export class Renderer {
 
     context.fillStyle = "#0a0a10";
     context.fillRect(camera.x - 8192, camera.y - 8192, 16384, 16384);
-    context.drawImage(this.art.sprites.get(isCity ? "ground" : `room_${areaName}`)!, 0, 0, area.width, area.height);
+    context.drawImage(this.art.sprites.get("ground")!, 0, 0, area.width, area.height);
     this.drawMarker(dt);
 
     /* Painter's order: whatever stands lower on the map is drawn later */
     const items = [
       ...(isCity ? OBJECTS : []).map((object) => ({ y: object.y, draw: () => this.drawObject(object, heroes) })),
-      ...(isCity ? [{ y: MANSION.y, draw: () => this.drawMansion(heroes) }] : []),
       ...pickables.map((item) => ({ y: item.y, draw: () => this.drawPickable(item, item.id === hovered) })),
       ...NPCS.filter((npc) => npc.area === areaName).map((npc) => ({ y: npc.y, draw: () => this.drawNpc(npc) })),
       ...heroes.map((hero) => ({ y: hero.y, draw: () => this.drawHero(hero) })),
@@ -601,15 +583,15 @@ export class Renderer {
     for (const item of items) item.draw();
 
     context.setTransform(1, 0, 0, 1, 0, 0);
-    if (isCity) this.drawNight(camera, heroes, shots);
+    if (isCity && NIGHT_TIME) this.drawNight(camera, heroes, shots);
     context.setTransform(scale, 0, 0, scale, this.canvas.width / 2 - camera.x * scale, this.canvas.height / 2 - camera.y * scale);
-    if (isCity) this.drawLampGlow();
+    if (isCity && NIGHT_TIME) this.drawLampGlow();
     this.drawHotspots(areaName, hovered, dt);
     this.drawBolts(dt);
     this.drawParticles(dt);
 
     context.setTransform(1, 0, 0, 1, 0, 0);
-    if (isCity) this.drawRain(dt);
+    if (isCity && NIGHT_TIME) this.drawRain(dt);
     this.drawVignette();
     context.setTransform(scale, 0, 0, scale, this.canvas.width / 2 - camera.x * scale, this.canvas.height / 2 - camera.y * scale);
     this.drawLabel(pickables, hovered);

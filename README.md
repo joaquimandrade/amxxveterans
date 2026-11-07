@@ -34,10 +34,10 @@ Left click walks or picks things up, double click runs, right click swings the s
 | `server/src/arena.ts` | The game: movement, fireballs, hits, knockback |
 | `server/src/state.ts` | State synced to clients |
 | `client/src/main.ts` | Input, avatars, animation, following the server state |
-| `client/src/render.ts` | Drawing: painted ground, sprites sorted by depth, night lighting, rain and effects |
-| `shared/forest.ts` | Generated city layout, used by server collisions and client drawing |
-| `shared/areas.ts` | City, mansion floors, walkable floors, doors and stairs |
-| `tools/build_art.py` | Cuts the painted sheets into sprites and places the city |
+| `client/src/render.ts` | Drawing: painted ground, sprites sorted by depth, optional night lighting and rain, effects |
+| `shared/forest.ts` | Generated village layout, used by server collisions and client drawing |
+| `shared/areas.ts` | Village area, walkable floors, usable spots and NPCs |
+| `tools/build_art.py` | Cuts the painted sheets into sprites and lays out the village |
 
 ## Adding a power
 

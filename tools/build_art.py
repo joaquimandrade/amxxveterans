@@ -1,7 +1,7 @@
-"""Cuts the painted source sheets into game sprites and places the city.
+"""Cuts the painted source sheets into game sprites and lays out the village.
 
 Usage: build_art.py SOURCE_DIR REPO_DIR
-Sources: city/ground.png, city/objects.png, items.png, walk_front, walk_back,
+Sources: vil/ground.png, vil/objects.png, items.png, walk_front, walk_back,
 slash_front and slash_back (each also with an axe_ prefix), and the walk
 cycles pw_front, pw_back, pa_front and pa_back. The current hero's sheets live in h3/.
 """
@@ -209,21 +209,23 @@ def items():
 
 
 # Order follows the sheet: name, drawn height, collision radius as a share of the width.
+# Village sheet, read row by row: (kind, height in world pixels, solid radius as a share of the width).
 OBJECT_KINDS = [
-    ("house", 480, 0.4), ("house", 500, 0.4), ("house", 480, 0.4), ("house", 500, 0.4),
-    ("tower", 590, 0.42), ("chapel", 500, 0.42), ("gate", 430, 0.42), ("tenement", 500, 0.42),
-    ("lamp", 235, 0), ("lamp", 235, 0), ("well", 130, 0.32), ("crates", 118, 0.34),
+    ("house", 400, 0.36), ("house", 400, 0.36), ("house", 400, 0.36), ("house", 400, 0.36),
+    ("church", 640, 0.34), ("barn", 420, 0.38), ("haystack", 250, 0.34), ("well", 270, 0.16),
+    ("cart", 150, 0.3), ("fence", 115, 0.3), ("bush", 70, 0.25), ("tree", 330, 0.1), ("tree", 440, 0.1),
 ]
 
 
 def objects():
-    rgb = load("city/objects.png")
+    """Cuts the village sheet. Fence pickets and haystack poles are separate blobs, so they are grouped first."""
+    rgb = load("vil/objects.png")
     pink = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
     mask = ndimage.binary_opening(pink < 60, iterations=1)
-    labels, found = ndimage.label(mask)
-    sizes = ndimage.sum(np.ones_like(labels), labels, range(1, found + 1))
-    largest = sorted(np.argsort(sizes)[-12:] + 1)
-    areas = ndimage.find_objects(labels)
+    groups, found = ndimage.label(ndimage.binary_dilation(mask, iterations=10))
+    sizes = ndimage.sum(mask, groups, range(1, found + 1))
+    largest = sorted(np.argsort(sizes)[-len(OBJECT_KINDS):] + 1)
+    areas = ndimage.find_objects(groups)
     boxes = [(label, areas[label - 1]) for label in largest]
     rows = sorted(boxes, key=lambda b: (b[1][0].start + b[1][0].stop) / 2)
     ordered = []
@@ -233,43 +235,16 @@ def objects():
 
     for index, (label, area) in enumerate(ordered):
         kind, height, radius = OBJECT_KINDS[index]
-        alpha = ndimage.gaussian_filter((labels[area] == label).astype(np.float32), 0.9)
+        shape = (groups[area] == label) & mask[area]
+        alpha = ndimage.gaussian_filter(shape.astype(np.float32), 0.9)
         alpha *= np.clip(1 - (pink[area] - 30) / 40, 0, 1)
         sprite = Image.fromarray(np.dstack([rgb[area], alpha * 255]).astype(np.uint8), "RGBA")
         scale = height / sprite.height
         sprite = sprite.resize((round(sprite.width * scale), height), Image.LANCZOS)
-        name = f"city_{kind}{index}"
+        name = f"village_{kind}{index}"
         sprite.save(f"{ART}/{name}.webp", quality=88, method=6)
         sprites.append({"name": name, "kind": kind, "w": sprite.width, "h": sprite.height, "radius": round(sprite.width * radius)})
     return sprites
-
-
-def mansion():
-    rgb = load("city/mansion.png")
-    pink = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
-    labels, found = ndimage.label(ndimage.binary_opening(pink < 60))
-    sizes = ndimage.sum(np.ones_like(labels), labels, range(1, found + 1))
-    label = int(np.argmax(sizes)) + 1
-    area = ndimage.find_objects(labels)[label - 1]
-    alpha = ndimage.gaussian_filter((labels[area] == label).astype(np.float32), 0.9)
-    alpha *= np.clip(1 - (pink[area] - 30) / 40, 0, 1)
-    sprite = Image.fromarray(np.dstack([rgb[area], alpha * 255]).astype(np.uint8), "RGBA")
-    scale = 640 / sprite.height
-    sprite.resize((round(sprite.width * scale), 640), Image.LANCZOS).save(f"{ART}/mansion.webp", quality=88, method=6)
-
-
-def woman():
-    rgb = load("city/woman.png")
-    pink = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
-    labels, found = ndimage.label(ndimage.binary_opening(pink < 70))
-    sizes = ndimage.sum(np.ones_like(labels), labels, range(1, found + 1))
-    label = int(np.argmax(sizes)) + 1
-    area = ndimage.find_objects(labels)[label - 1]
-    alpha = ndimage.gaussian_filter((labels[area] == label).astype(np.float32), 0.8)
-    alpha *= np.clip(1 - (pink[area] - 40) / 45, 0, 1)
-    sprite = Image.fromarray(np.dstack([rgb[area], alpha * 255]).astype(np.uint8), "RGBA")
-    scale = 170 / sprite.height
-    sprite.resize((round(sprite.width * scale), 170), Image.LANCZOS).save(f"{ART}/npc_woman.webp", quality=90, method=6)
 
 
 def knife_icon():
@@ -286,9 +261,16 @@ def knife_icon():
     icon.save(f"{ART}/icon_sword.webp", quality=88, method=6)
 
 
+# Grass spots of the village ground painting, on its 1100 x 614 preview, where something can stand.
+SPOTS = [
+    (120, 250), (95, 135), (420, 110), (580, 105), (650, 75), (880, 205), (1050, 95),
+    (110, 335), (60, 470), (250, 565), (480, 470), (640, 420), (1040, 470), (900, 600),
+]
+
+
 def ground():
-    """Mirrors the street corner into a grid, so the sidewalks form city blocks."""
-    source = Image.open(f"{SOURCE}/city/ground.png").convert("RGB")
+    """Mirrors the crossroads into a 3 x 3 grid, so the dirt roads join into a village."""
+    source = Image.open(f"{SOURCE}/vil/ground.png").convert("RGB")
     tile_w = round(WORLD_W / 3)
     tile_h = round(tile_w * source.height / source.width)
     tile = source.resize((tile_w, tile_h), Image.LANCZOS)
@@ -303,75 +285,58 @@ def ground():
                 piece = piece.transpose(Image.FLIP_TOP_BOTTOM)
             world.paste(piece, (column * tile_w, row * tile_h))
     world.save(f"{ART}/ground.webp", quality=80, method=6)
-    for room in ("hall", "upper"):
-        painting = Image.open(f"{SOURCE}/city/{room}.png").convert("RGB").resize((1430, 798), Image.LANCZOS)
-        pixels = np.asarray(painting).astype(np.float32)
-        # The hall sits on flat grey. The upper room's backdrop is nearly as dark as
-        # its walls, so keying it would eat into the painting.
-        if room == "hall":
-            backdrop = np.linalg.norm(pixels - pixels[4, 4], axis=2) < 26
-            labels, _ = ndimage.label(backdrop)
-            outside = labels == labels[4, 4]
-            pixels[ndimage.binary_dilation(outside, iterations=2)] = (10, 10, 16)
-        Image.fromarray(pixels.astype(np.uint8)).save(f"{ART}/room_{room}.webp", quality=84, method=6)
     return tile_w * 3, height, tile_w, tile_h
 
 
 def place(sprites, width, height, tile_w, tile_h):
     random.seed(1998)
     spawn = (width // 2, height // 2)
-    keep_clear = [(200, -30), (-170, 70), (520, 240), (70, 210), (-420, -130)]
-    buildings = [s for s in sprites if s["kind"] in ("house", "tenement", "tower", "chapel", "gate")]
+    by_kind = {}
+    for sprite in sprites:
+        by_kind.setdefault(sprite["kind"], []).append(sprite)
     placed = []
 
     def add(sprite, x, y, scale=1.0):
         placed.append({
             "sprite": sprite["name"], "x": round(x), "y": round(y), "scale": round(scale, 2),
-            "radius": round(sprite["radius"] * scale), "light": sprite["kind"] == "lamp",
+            "radius": round(sprite["radius"] * scale), "light": False,
         })
 
     def free(x, y, gap):
         if not (30 < x < width - 30 and 60 < y < height - 10):
             return False
-        if any((x - spawn[0] - dx) ** 2 + (y - spawn[1] - dy) ** 2 < 120**2 for dx, dy in keep_clear):
-            return False
-        if (x - spawn[0] - 60) ** 2 + ((y - spawn[1] + 330) * 1.3) ** 2 < 470**2:
-            return False  # the mansion's plot
         return all((x - o["x"]) ** 2 + ((y - o["y"]) * 1.5) ** 2 >= gap**2 for o in placed)
 
-    # City blocks sit on the sidewalks where four mirrored tiles meet.
-    for column in range(4):
-        for row in range(4):
-            cx, cy = column * tile_w, row * tile_h
-            for _ in range(36):
-                angle = random.uniform(0, 6.283)
-                distance = random.uniform(0, 290)
-                x, y = cx + math.cos(angle) * distance, cy + math.sin(angle) * distance * 0.62
-                if free(x, y, 165):
-                    add(random.choice(buildings), x, y, random.uniform(0.9, 1.1))
+    def spot(column, row, sx, sy):
+        x, y = sx / 1100 * tile_w, sy / 614 * tile_h
+        if column % 2:
+            x = tile_w - x
+        if row % 2:
+            y = tile_h - y
+        return column * tile_w + x, row * tile_h + y
 
-    lamps = [s for s in sprites if s["kind"] == "lamp"]
-    props = [s for s in sprites if s["kind"] in ("well", "crates")]
+    # The church stands by the square the players start on.
+    add(by_kind["church"][0], *spot(1, 1, 420, 110))
 
-    # Lamps ring each street crossing; props sit along the kerbs.
+    farm = ["house"] * 5 + ["barn", "haystack", "haystack", "well", "cart"]
     for column in range(3):
         for row in range(3):
-            cx, cy = (column + 0.5) * tile_w, (row + 0.5) * tile_h
-            for spot in range(5):
-                angle = spot / 5 * 6.283 + 0.4
-                x, y = cx + math.cos(angle) * tile_w * 0.3, cy + math.sin(angle) * tile_h * 0.33
-                if free(x, y, 90):
-                    add(random.choice(lamps), x, y)
-            for _ in range(2):
-                x, y = cx + random.uniform(-420, 420), cy + random.uniform(-260, 260)
-                if free(x, y, 120):
-                    add(random.choice(props), x, y)
+            for sx, sy in SPOTS:
+                x, y = spot(column, row, sx + random.uniform(-25, 25), sy + random.uniform(-20, 20))
+                kind = random.choice(farm)
+                gap = 230 if kind in ("house", "barn") else 140
+                if free(x, y, gap):
+                    add(random.choice(by_kind[kind]), x, y, random.uniform(0.92, 1.08))
+                    # Each yard gets a fence, a bush or a tree beside it.
+                    for extra in random.sample(["fence", "bush", "tree", "tree"], 2):
+                        ex = x + random.choice((-1, 1)) * random.uniform(150, 230)
+                        ey = y + random.uniform(-40, 70)
+                        if free(ex, ey, 90):
+                            add(random.choice(by_kind[extra]), ex, ey, random.uniform(0.85, 1.1))
     return spawn, placed
 
 
 sprites = objects()
-mansion()
-woman()
 hero()
 items()
 knife_icon()
