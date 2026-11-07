@@ -29,14 +29,6 @@
       #talk[hidden] { display: none; }
       .talk-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
       #talk-scene-tall { display: none; object-position: center top; }
-      #talk-box { bottom: 0; width: 100vw; min-height: 36vh; grid-template-columns: 1fr; gap: 10px; padding: 18px 18px 34px; border-width: 3px 0 0; outline: none; }
-        /* The portrait sticks out above the box, clear of the text below the name. */
-        #talk-box > img { position: absolute; top: -50px; left: 18px; width: 84px; height: 84px; }
-        #talk-name { margin: 0 0 18px 104px; font-size: 16px; }
-        #talk-english { font-size: 21px; min-height: 4.2em; }
-        #talk-romanian { font-size: 18px; }
-        #talk-next { font-size: 12px; bottom: 12px; right: 18px; }
-      }
       #talk-box {
         position: absolute; left: 50%; bottom: 4vh; transform: translateX(-50%); width: min(980px, calc(100vw - 24px));
         display: grid; grid-template-columns: auto 1fr; gap: 16px; padding: 14px; box-sizing: border-box;
