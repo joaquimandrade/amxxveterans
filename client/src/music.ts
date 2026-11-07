@@ -1,12 +1,14 @@
 /* Three short looping tunes in an arcade style, played by a small Web Audio sequencer.
-   They are original, written in A Phrygian dominant (A Bb C# D E F G) for a Balkan flavour. */
+   They are original, in a Portuguese folk spirit: a vira in 6/8 on an accordion-like lead with
+   bombo and ferrinhos, and a fado-style descending cadence for the face-off.
+   Every step is an eighth note; the 6/8 tunes loop over bars of six steps. */
 
 import { audioContext } from "./sound.ts";
 
 type Note = number | null;
 type Track = {
   bpm: number;
-  /** One entry per sixteenth note; every channel loops over its own length. */
+  /** One entry per step; every channel loops over its own length. */
   lead?: Note[];
   bass?: Note[];
   pad?: Note[];
@@ -18,52 +20,53 @@ type Track = {
 
 const _ = null;
 // MIDI numbers: A2 = 45, A3 = 57, A4 = 69.
-const A2 = 45, Bb2 = 46, D3 = 50, E3 = 52, F3 = 53, G3 = 55, A3 = 57;
-const Bb3 = 58, Cs4 = 61, D4 = 62, E4 = 64, F4 = 65, G4 = 67;
-const A4 = 69, Bb4 = 70, Cs5 = 73, D5 = 74, E5 = 76, F5 = 77;
-const A1 = 33, Bb1 = 34;
+const E1 = 28, F1 = 29, G1 = 31, A1 = 33;
+const G2 = 43, A2 = 45, C3 = 48, D3 = 50, E3 = 52, F3 = 53;
+const Gs3 = 56, G3 = 55, A3 = 57, B3 = 59, C4 = 60, D4 = 62, E4 = 64, F4 = 65, Fs4 = 66, G4 = 67;
+const A4 = 69, B4 = 71, C5 = 72, D5 = 74, E5 = 76;
 
 export const TRACKS: Record<string, Track> = {
-  /* The opening shot: a plain village tune on a soft square lead. */
+  /* The opening shot: a gentle vira in G. */
   intro: {
-    bpm: 112,
-    leadWave: "square",
+    bpm: 90,
+    leadWave: "sawtooth",
     lead: [
-      A4, _, _, Cs5, D5, _, E5, _, F5, _, E5, _, D5, _, Cs5, _,
-      D5, _, Cs5, _, Bb4, _, A4, _, Bb4, _, A4, _, A4, _, _, _,
+      G4, _, B4, D5, _, B4, C5, _, A4, Fs4, _, A4,
+      G4, _, B4, D5, _, E5, D5, _, C5, B4, _, A4,
+      B4, _, G4, A4, _, Fs4, G4, _, _, G4, _, _,
     ],
-    bass: [A2, _, _, _, E3, _, _, _, A2, _, _, _, E3, _, _, _, D3, _, _, _, A2, _, _, _, Bb2, _, _, _, A2, _, _, _],
-    hat: "x...x...x...x...",
+    bass: [G2, _, _, D3, _, _, D3, _, _, A2, _, _, G2, _, _, D3, _, _, D3, _, _, A2, _, _, G2, _, _, D3, _, _, G2, _, _, _, _, _],
+    kick: "x.....",
+    hat: "...x..",
   },
-  /* The face-off: a low drone, a creeping semitone and a heartbeat. */
+  /* The face-off: a slow fado-style descent over a low drone, and a heartbeat. */
   tension: {
-    bpm: 76,
+    bpm: 70,
     leadWave: "triangle",
-    pad: [A1, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, Bb1, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _],
-    bass: [A2, _, Bb2, _, A2, _, Bb2, _, A2, _, Bb2, _, A2, _, Bb2, _],
     lead: [
-      _, _, _, _, _, _, _, _, E5, _, _, _, F5, _, _, _,
-      _, _, _, _, _, _, _, _, Cs5, _, _, _, D5, _, _, _,
+      A3, C4, E4, A4, E4, C4, G3, B3, D4, G4, D4, B3,
+      F3, A3, C4, F4, C4, A3, E3, Gs3, B3, E4, B3, Gs3,
     ],
-    kick: "x..x............",
+    pad: [A1, _, _, _, _, _, G1, _, _, _, _, _, F1, _, _, _, _, _, E1, _, _, _, _, _],
+    kick: "x..x....................",
   },
-  /* The fight: a fast beat, a driving bass and a Balkan lead. */
+  /* The fight: a fast malhão with bombo and ferrinhos. */
   fight: {
-    bpm: 148,
-    leadWave: "square",
+    bpm: 120,
+    leadWave: "sawtooth",
     lead: [
-      A4, _, A4, Bb4, Cs5, _, A4, _, D5, _, Cs5, _, Bb4, _, A4, _,
-      E5, _, D5, _, Cs5, _, D5, _, Bb4, _, Cs5, _, A4, _, _, _,
-      A4, _, A4, Bb4, Cs5, _, A4, _, D5, _, E5, _, F5, _, E5, _,
-      D5, _, Cs5, _, Bb4, _, A4, _, G4, _, Bb4, _, A4, _, _, _,
+      G4, A4, B4, D5, _, B4, C5, _, A4, Fs4, _, D4,
+      G4, A4, B4, D5, _, E5, D5, _, C5, B4, _, A4,
+      B4, C5, D5, E5, _, D5, C5, _, B4, A4, _, Fs4,
+      G4, _, A4, B4, _, A4, G4, _, _, G4, _, _,
     ],
     bass: [
-      A2, _, A3, A2, _, A2, A3, _, A2, _, A3, A2, _, A2, Bb2, _,
-      A2, _, A3, A2, _, A2, A3, _, G3, _, F3, _, E3, _, Bb2, _,
+      G2, _, D3, G2, _, D3, D3, _, A2, D3, _, A2, G2, _, D3, G2, _, D3, D3, _, A2, D3, _, A2,
+      C3, _, G2, C3, _, G2, D3, _, A2, D3, _, A2, G2, _, D3, D3, _, A2, G2, _, D3, G2, _, _,
     ],
-    kick: "x.....x.x.......",
-    snare: "....x.......x...",
-    hat: "x.x.x.x.x.x.x.xx",
+    kick: "x..x..",
+    snare: "......x.....",
+    hat: "x.xx.x",
   },
 };
 

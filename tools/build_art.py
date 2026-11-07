@@ -3,7 +3,7 @@
 Usage: build_art.py SOURCE_DIR REPO_DIR
 Sources: vil/ground.png, vil/objects.png, items.png, walk_front, walk_back,
 slash_front and slash_back (each also with an axe_ prefix), and the walk
-cycles pw_front, pw_back, pa_front and pa_back. The current hero's sheets live in h3/,
+cycles pw_front, pw_back, pa_front and pa_back. The current hero's sheets live in ju/,
 the police in cop/.
 """
 import json
@@ -159,25 +159,26 @@ def slash_sheet(name, out, standing_height):
 
 
 def hero():
-    """The hero with the hat: walks over motion capture, attacks, idles, with knife or axe."""
-    folder = "h3/"
+    """Julião the shepherd: walks over motion capture, swings his crook, idles."""
+    global KEY_PINK
+    KEY_PINK = True  # the thin crook picks up a magenta fringe otherwise
+    folder = "ju/"
     walk = grid_frames(f"{folder}pw_front.png")[0]
     ys = np.where(walk[1] > 0.5)[0]
     walk_scale = HERO_HEIGHT / (ys.max() - ys.min())
 
-    for walk_prefix, slash_prefix, out in (("pw", "", "hero"), ("pa", "axe_", "hero_axe")):
+    for walk_prefix, slash_prefix, out in (("pw", "", "hero"),):
         walk_sheet(f"{folder}{walk_prefix}_front.png", f"{out}_walk_front", walk_scale, False)
         walk_sheet(f"{folder}{walk_prefix}_back.png", f"{out}_walk_back", walk_scale, False)
         slash_sheet(f"{folder}{slash_prefix}slash_front.png", f"{out}_slash_front", HERO_HEIGHT)
         # The painted back-facing attacks turned to face the camera, so both directions use the front one.
         slash_sheet(f"{folder}{slash_prefix}slash_front.png", f"{out}_slash_back", HERO_HEIGHT)
 
-    for side in ("front", "back"):
-        reference = frames_of(f"{folder}ref_{side}.png", 1)[0]
+    for side, source in (("front", "ref_front"), ("back", "ref_back_idle")):
+        reference = frames_of(f"{folder}{source}.png", 1)[0]
         ys = np.where(reference[1] > 0.5)[0]
         single_sheet(reference, f"hero_idle_{side}", HERO_HEIGHT / (ys.max() - ys.min()))
-        axe = grid_frames(f"{folder}pa_{side}.png")[0]
-        single_sheet(axe, f"hero_axe_idle_{side}", walk_scale)
+    KEY_PINK = False
 
 
 # Item centres on a 1376 by 386 preview, and the height each one is drawn at.
@@ -300,22 +301,22 @@ def portrait(name, out, head_share):
 
 def talk_scene():
     """The painted face-off shown under the dialogue, and the two portraits cut from it."""
-    painting = Image.open(f"{SOURCE}/cop/talk.png").convert("RGB")
+    painting = Image.open(f"{SOURCE}/ju/talk.png").convert("RGB")
     painting.resize((1600, round(1600 * painting.height / painting.width)), Image.LANCZOS).save(
         f"{ART}/scene_talk.webp", quality=86, method=6)
-    tall = Image.open(f"{SOURCE}/cop/talk_tall.png").convert("RGB")
+    tall = Image.open(f"{SOURCE}/ju/talk_tall.png").convert("RGB")
     tall.resize((900, round(900 * tall.height / tall.width)), Image.LANCZOS).save(
         f"{ART}/scene_talk_tall.webp", quality=86, method=6)
     scale = painting.width / 1100
     half = 62
     # Face centres, measured on an 1100 wide preview of the painting.
-    for name, (x, y) in {"donkey": (368, 112), "hero": (778, 152)}.items():
+    for name, (x, y) in {"donkey": (445, 112), "hero": (770, 192)}.items():
         box = [round(v * scale) for v in (x - half, y - half, x + half, y + half)]
         painting.crop(box).resize((160, 160), Image.LANCZOS).save(f"{ART}/portrait_{name}.webp", quality=90, method=6)
 
 
 def knife_icon():
-    rgb = load("h3/knife.png")
+    rgb = load("ju/crook.png")
     pink = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
     labels, found = ndimage.label(ndimage.binary_opening(pink < 60))
     sizes = ndimage.sum(np.ones_like(labels), labels, range(1, found + 1))
@@ -364,7 +365,7 @@ def ground():
 
 def place(sprites, width, height, tile_w, tile_h):
     random.seed(1998)
-    # Virgiliu and the policeman start face to face on the square where the four tiles meet.
+    # Julião and the policeman start face to face on the square where the four tiles meet.
     spawn = (round(width / 2 + 230), round(height / 2))
     gate = (round(width / 2 - 230), round(height / 2 + 20))
     by_kind = {}

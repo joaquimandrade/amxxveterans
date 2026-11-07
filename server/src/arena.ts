@@ -35,7 +35,8 @@ const BOLT_COST = 15;
 const POTION_MANA = 50;
 
 const WEAPONS: Record<string, { range: number; knockback: number; cooldown: number; damage: number }> = {
-  sword: { range: SLASH_RANGE, knockback: SLASH_KNOCKBACK, cooldown: SLASH_COOLDOWN_MS, damage: 12 },
+  /* The id stays "sword"; in this game it is Julião's crook, longer and heavier than a knife. */
+  sword: { range: 145, knockback: 1000, cooldown: 600, damage: 16 },
   axe: { range: 145, knockback: 1250, cooldown: 800, damage: 22 },
 };
 const FIRE_DAMAGE = 15;
@@ -135,7 +136,7 @@ export class Arena extends Room {
 
   onJoin(client: Client) {
     const player = new Player();
-    player.name = "VIRGILIU";
+    player.name = "JULIÃO";
     player.hue = (this.nextPlayer * 0.381966) % 1;
     player.x = SPAWN.x;
     player.z = SPAWN.y;

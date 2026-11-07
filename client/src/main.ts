@@ -35,27 +35,27 @@ const HOLD_MS = 280;
 const BOLT_REPEAT_MS = 560;
 const PICK_RADIUS = 58;
 const DEPTH_SCALE = 0.72;
-const ENEMY_NAMES: Record<string, string> = { cop: "POLIȚIST", donkey: "POLIȚIST" };
+const ENEMY_NAMES: Record<string, string> = { cop: "POLÍCIA", donkey: "POLÍCIA" };
 const ZOOM_SECONDS = 3.2;
 const FIGHT_ZOOM = 0.8;
 const TYPE_SPEED = 45;
-/* The face-off before the fight: English first, the Romanian under it. */
+/* The face-off before the fight: English first, the Portuguese under it. */
 const DIALOGUE = [
   {
-    who: "POLIȚIST", portrait: "portrait_donkey",
-    english: "Did you think nobody would notice the missing copper? You've got two choices: hand over every kilo of copper you stole, the easy way or the hard way. Your call.",
-    romanian: "Credeai că nu observă nimeni că lipsește cuprul? Ai două variante: îmi dai toate kilogramele de cupru pe care le-ai furat, de bunăvoie sau cu forța. Tu alegi.",
+    who: "POLÍCIA", portrait: "portrait_donkey",
+    english: "The council already warned you that you have to leave this land. We'll pay you the expropriation money. Lithium is needed for humanity.",
+    translation: "Já foste avisado pela câmara que tens de sair deste terreno. Vamos pagar-te o dinheiro da expropriação. O lítio é necessário para a humanidade.",
   },
   {
-    who: "VIRGILIU", portrait: "portrait_hero",
-    english: "I do shit on your elders.",
-    romanian: "Mă cac pe morții tăi.",
+    who: "JULIÃO", portrait: "portrait_hero",
+    english: "This land was given to me by my father, and it was my grandfather who gave it to him. Over my dead body.",
+    translation: "Este terreno foi-me dado pelo meu pai, e foi o meu avô que lho deu. Só por cima do meu cadáver.",
   },
 ];
 const STRIKE_MS = 250;
 const DYING_MS = 900;
 const ITEM_NAMES: Record<string, string> = {
-  sword: "Knife", axe: "Battle axe", potion_mana: "Mana potion", coins: "Gold coins",
+  sword: "Shepherd's crook", axe: "Battle axe", potion_mana: "Mana potion", coins: "Gold coins",
   ring: "Gold ring", helmet: "Helmet", pouch: "Leather pouch",
 };
 const manaFill = document.getElementById("mana-fill")!;
@@ -73,7 +73,7 @@ const talkScene = document.getElementById("talk-scene") as HTMLImageElement;
 const talkPortrait = document.getElementById("talk-portrait") as HTMLImageElement;
 const talkName = document.getElementById("talk-name")!;
 const talkEnglish = document.getElementById("talk-english")!;
-const talkRomanian = document.getElementById("talk-romanian")!;
+const talkTranslation = document.getElementById("talk-translation")!;
 const banner = document.getElementById("banner")!;
 const bannerText = document.getElementById("banner-text")!;
 const bannerHint = document.getElementById("banner-hint")!;
@@ -153,7 +153,7 @@ function updateTalk(dt: number) {
 
   typed = Math.min(current.english.length, typed + dt * TYPE_SPEED);
   talkEnglish.textContent = current.english.slice(0, Math.floor(typed));
-  talkRomanian.textContent = typed >= current.english.length ? current.romanian : "";
+  talkTranslation.textContent = typed >= current.english.length ? current.translation : "";
 }
 
 /* Returns true while the intro owns the camera and the controls. */
@@ -190,7 +190,7 @@ function updateIntro(dt: number, self: PlayerView | undefined, enemy: EnemyView 
 /* Browsers may hold sound back until the first click or key; the music is queued anyway and starts then. */
 unlockSound();
 playMusic("intro");
-showBanner("ROMANIAN LIFE", "", 2.6, true);
+showBanner("PORTUGUESE LIFE", "", 2.6, true);
 
 function checkEnd(phase: string) {
   if (stage !== "fight" || (phase !== "won" && phase !== "lost")) return;

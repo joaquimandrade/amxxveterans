@@ -45,7 +45,7 @@ function whoosh(from: number, to: number, seconds: number, volume: number, delay
 }
 
 export const sounds = {
-  knife: () => whoosh(5200, 1400, 0.16, 0.5),
+  knife: () => whoosh(2400, 500, 0.26, 0.7),
   axe: () => whoosh(1600, 380, 0.3, 0.75),
   /** The baton going up and swinging down. */
   baton: (delayMs: number) => whoosh(900, 260, 0.24, 0.6, Math.max(0, delayMs - 180) / 1000),

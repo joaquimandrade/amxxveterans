@@ -90,7 +90,7 @@ export async function loadArt(base: string) {
       ...HOTSPOTS.map((hotspot) => hotspot.image.sprite),
       ...SPRITES.map((sprite) => sprite.name),
       ...ITEM_KINDS.map((kind) => `item_${kind}`),
-      ...HERO_SHEETS.flatMap((sheet) => [`hero_${sheet}`, `hero_axe_${sheet}`]),
+      ...HERO_SHEETS.map((sheet) => `hero_${sheet}`),
       ...ENEMY_KINDS.flatMap((kind) => ["walk_front", "walk_back", "attack"].map((sheet) => `enemy_${kind}_${sheet}`)),
       "enemy_donkey_tired",
     ]),
@@ -307,7 +307,7 @@ export class Renderer {
     const dy = Math.cos(hero.aim);
     const facesCamera = dy >= 0;
     const slashing = hero.slashTime >= 0;
-    const prefix = hero.weapon === "axe" ? "hero_axe" : "hero";
+    const prefix = "hero";
     const action = slashing ? "slash" : hero.moving ? "walk" : "idle";
     const sheet = this.art.sprites.get(`${prefix}_${action}_${facesCamera ? "front" : "back"}`)!;
     const stride = hero.running ? RUN_STRIDE : WALK_STRIDE;

@@ -16,7 +16,7 @@ export class Player extends Schema {
   @type("number") kills = 0;
   @type("string") area = "city";
   @type("string") weapon = "sword";
-  @type(["string"]) inventory = new ArraySchema<string>("sword", "axe");
+  @type(["string"]) inventory = new ArraySchema<string>("sword");
 }
 
 export class GroundItem extends Schema {
