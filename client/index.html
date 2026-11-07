@@ -28,6 +28,27 @@
       .bar .fill { background: linear-gradient(#fff6a0, #ffd200 45%, #e8a400); }
       #mana { height: 6px; margin-top: 4px; background: #1b2238; border: 2px solid #000; }
       #mana-fill { height: 100%; background: linear-gradient(#8ec0ff, #2a56c8); }
+      body.cutscene #bars, body.cutscene #help { display: none; }
+      #talk { position: fixed; inset: 0; background: #000; }
+      #talk[hidden] { display: none; }
+      #talk-scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+      #talk-box {
+        position: absolute; left: 50%; bottom: 4vh; transform: translateX(-50%); width: min(980px, calc(100vw - 24px));
+        display: grid; grid-template-columns: auto 1fr; gap: 16px; padding: 14px; box-sizing: border-box;
+        background: #0b0806e8; border: 3px solid #e8d7a8; outline: 3px solid #000; color: #fff4dc;
+      }
+      #talk-portrait { width: clamp(72px, 12vw, 120px); height: clamp(72px, 12vw, 120px); border: 3px solid #fff; outline: 2px solid #000; }
+      #talk-name { font: 14px "Press Start 2P", monospace; color: #ffd23a; text-shadow: 2px 2px 0 #000; margin-bottom: 10px; }
+      #talk-english { font: 600 clamp(16px, 2.2vw, 22px)/1.4 Georgia, serif; min-height: 2.8em; }
+      #talk-romanian { font: italic clamp(14px, 1.8vw, 18px)/1.4 Georgia, serif; color: #d9c48f; margin-top: 8px; min-height: 1.4em; }
+      #talk-next { position: absolute; right: 12px; bottom: 8px; font: 10px "Press Start 2P", monospace; color: #e8d7a8; animation: blink 1s steps(2) infinite; }
+      @keyframes blink { 50% { opacity: 0; } }
+      #banner { position: fixed; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
+      #banner[hidden] { display: none; }
+      #banner-text { font: clamp(36px, 9vw, 96px) "Press Start 2P", monospace; color: #ffd23a; text-shadow: 6px 6px 0 #b8200f, 10px 10px 0 #000; }
+      #banner-hint { margin-top: 26px; font: 14px "Press Start 2P", monospace; color: #fff; text-shadow: 2px 2px 0 #000; animation: blink 1s steps(2) infinite; }
+      #banner.pop #banner-text { animation: pop 0.35s ease-out; }
+      @keyframes pop { from { transform: scale(2.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
       #brand {
         position: fixed; right: 18px; bottom: 10px; pointer-events: none; color: #fff7e0; opacity: 0.42;
         font: 700 clamp(22px, 4vw, 40px)/1 "Cinzel Decorative", Georgia, serif; letter-spacing: 1px;
@@ -48,7 +69,7 @@
       .slot.equipped { border-color: #c8501a; background: #e8c47a; box-shadow: inset 0 0 0 2px #c8501a; }
     </style>
   </head>
-  <body>
+  <body class="cutscene">
     <div id="fade"></div>
     <div id="bars">
       <div class="fighter">
@@ -68,6 +89,19 @@
       </div>
     </div>
     <div id="brand">Romanian Life</div>
+    <section id="talk" hidden>
+      <img id="talk-scene" alt="Virgiliu and the policeman on his donkey, face to face in the village" />
+      <div id="talk-box">
+        <img id="talk-portrait" alt="" />
+        <div>
+          <div id="talk-name"></div>
+          <div id="talk-english"></div>
+          <div id="talk-romanian" lang="ro"></div>
+        </div>
+        <div id="talk-next">click ▸</div>
+      </div>
+    </section>
+    <div id="banner" hidden><div id="banner-text"></div><div id="banner-hint"></div></div>
     <div id="help">click walk or use · double click run · right click attack · hold right lightning · space fireball · M inventory · wheel zoom</div>
     <section id="panel" hidden>
       <h2>Inventory</h2>

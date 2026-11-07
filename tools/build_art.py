@@ -289,6 +289,19 @@ def portrait(name, out, head_share):
     crop.resize((112, 112), Image.LANCZOS).save(f"{ART}/portrait_{out}.webp", quality=90, method=6)
 
 
+def talk_scene():
+    """The painted face-off shown under the dialogue, and the two portraits cut from it."""
+    painting = Image.open(f"{SOURCE}/cop/talk.png").convert("RGB")
+    painting.resize((1600, round(1600 * painting.height / painting.width)), Image.LANCZOS).save(
+        f"{ART}/scene_talk.webp", quality=86, method=6)
+    scale = painting.width / 1100
+    half = 62
+    # Face centres, measured on an 1100 wide preview of the painting.
+    for name, (x, y) in {"donkey": (368, 112), "hero": (778, 152)}.items():
+        box = [round(v * scale) for v in (x - half, y - half, x + half, y + half)]
+        painting.crop(box).resize((160, 160), Image.LANCZOS).save(f"{ART}/portrait_{name}.webp", quality=90, method=6)
+
+
 def knife_icon():
     rgb = load("h3/knife.png")
     pink = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
@@ -310,31 +323,38 @@ SPOTS = [
 ]
 
 
+GRID = 3
+# The fight only uses the middle of the 3 x 3 village: two tiles across, centred on the crossroads square.
+CROP = 0.5
+
+
 def ground():
-    """Mirrors the crossroads into a 3 x 3 grid, so the dirt roads join into a village."""
+    """Mirrors the crossroads into a 3 x 3 grid and keeps the middle, a small village around one square."""
     source = Image.open(f"{SOURCE}/vil/ground.png").convert("RGB")
-    tile_w = round(WORLD_W / 3)
+    tile_w = round(WORLD_W / 3)  # the same scale as the old 3 x 3 village
     tile_h = round(tile_w * source.height / source.width)
     tile = source.resize((tile_w, tile_h), Image.LANCZOS)
-    height = tile_h * 3
-    world = Image.new("RGB", (tile_w * 3, height))
-    for column in range(3):
-        for row in range(3):
+    height = tile_h * GRID
+    world = Image.new("RGB", (tile_w * GRID, height))
+    for column in range(GRID):
+        for row in range(GRID):
             piece = tile
             if column % 2:
                 piece = piece.transpose(Image.FLIP_LEFT_RIGHT)
             if row % 2:
                 piece = piece.transpose(Image.FLIP_TOP_BOTTOM)
             world.paste(piece, (column * tile_w, row * tile_h))
+    left, top = round(tile_w * CROP), round(tile_h * CROP)
+    world = world.crop((left, top, tile_w * GRID - left, height - top))
     world.save(f"{ART}/ground.webp", quality=80, method=6)
-    return tile_w * 3, height, tile_w, tile_h
+    return world.width, world.height, tile_w, tile_h
 
 
 def place(sprites, width, height, tile_w, tile_h):
     random.seed(1998)
-    # Players start at the top right; the police come in from the bottom left.
-    spawn = (round(width * 0.84), round(height * 0.2))
-    gate = (round(width * 0.12), round(height * 0.84))
+    # Virgiliu and the policeman start face to face on the square where the four tiles meet.
+    spawn = (round(width / 2 + 230), round(height / 2))
+    gate = (round(width / 2 - 230), round(height / 2 + 20))
     by_kind = {}
     for sprite in sprites:
         by_kind.setdefault(sprite["kind"], []).append(sprite)
@@ -349,8 +369,8 @@ def place(sprites, width, height, tile_w, tile_h):
     def free(x, y, gap):
         if not (30 < x < width - 30 and 60 < y < height - 10):
             return False
-        if any((x - cx) ** 2 + ((y - cy) * 1.4) ** 2 < 330**2 for cx, cy in (spawn, gate)):
-            return False
+        if (x - width / 2) ** 2 + ((y - height / 2) * 1.5) ** 2 < 640**2:
+            return False  # the fighting ground
         return all((x - o["x"]) ** 2 + ((y - o["y"]) * 1.5) ** 2 >= gap**2 for o in placed)
 
     def spot(column, row, sx, sy):
@@ -359,14 +379,14 @@ def place(sprites, width, height, tile_w, tile_h):
             x = tile_w - x
         if row % 2:
             y = tile_h - y
-        return column * tile_w + x, row * tile_h + y
+        return column * tile_w + x - round(tile_w * CROP), row * tile_h + y - round(tile_h * CROP)
 
-    # The church stands by the square the players start on.
-    add(by_kind["church"][0], *spot(1, 1, 420, 110))
+    # The church watches the square from behind.
+    add(by_kind["church"][0], width / 2 - 120, height / 2 - 440)
 
     farm = ["house", "house", "barn", "haystack", "haystack", "well", "cart", "tree", "tree", "bush"]
-    for column in range(3):
-        for row in range(3):
+    for column in range(GRID):
+        for row in range(GRID):
             for sx, sy in SPOTS:
                 if random.random() > 0.45:
                     continue
@@ -389,9 +409,8 @@ hero()
 items()
 knife_icon()
 enemies()
-portrait("h3/ref_front.png", "hero", 0.3)
 portrait("cop/cop_ref_front.png", "cop", 0.3)
-portrait("cop/donkey_ref_front.png", "donkey", 0.32)
+talk_scene()
 world_width, height, tile_w, tile_h = ground()
 spawn, gate, placed = place(sprites, world_width, height, tile_w, tile_h)
 

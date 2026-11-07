@@ -10,7 +10,8 @@ export class Player extends Schema {
   @type("boolean") running = false;
   @type("number") hits = 0;
   @type("number") mana = 100;
-  @type("number") health = 100;
+  @type("number") health = 300;
+  @type("number") maxHealth = 300;
   @type("boolean") alive = true;
   @type("number") kills = 0;
   @type("string") area = "city";
@@ -50,6 +51,8 @@ export class Enemy extends Schema {
 }
 
 export class ArenaState extends Schema {
+  /** intro (cutscene and dialogue), fight, won or lost */
+  @type("string") phase = "intro";
   @type({ map: Enemy }) enemies = new MapSchema<Enemy>();
   @type({ map: Player }) players = new MapSchema<Player>();
   @type({ map: Shot }) shots = new MapSchema<Shot>();

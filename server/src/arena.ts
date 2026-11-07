@@ -40,19 +40,16 @@ const WEAPONS: Record<string, { range: number; knockback: number; cooldown: numb
 };
 const FIRE_DAMAGE = 15;
 const BOLT_DAMAGE = 20;
-const HEALTH_MAX = 100;
-const RESPAWN_HERO_MS = 3000;
+const HEALTH_MAX = 300;
 
-/* The police come one at a time; every third one rides a donkey. */
+/* One fight against the policeman on his donkey. Both last long, so the fight does too. */
 const ENEMY_KINDS: Record<string, {
   health: number; speed: number; radius: number; reach: number; damage: number;
   cooldown: number; windup: number; knockback: number;
 }> = {
   cop: { health: 60, speed: 150, radius: 24, reach: 95, damage: 8, cooldown: 1300, windup: 260, knockback: 500 },
-  donkey: { health: 110, speed: 230, radius: 40, reach: 115, damage: 12, cooldown: 1500, windup: 300, knockback: 700 },
+  donkey: { health: 600, speed: 230, radius: 40, reach: 115, damage: 14, cooldown: 1500, windup: 300, knockback: 700 },
 };
-const FIRST_ENEMY_MS = 2500;
-const NEXT_ENEMY_MS = 2500;
 const ENEMY_STUN_MS = 300;
 const CHEST_LOOT = ["potion_mana", "potion_mana", "coins", "ring", "helmet", "pouch", "axe"];
 const KNOCKBACK_DECAY = 6;
@@ -99,14 +96,15 @@ export class Arena extends Room {
   private nextPlayer = 1;
   private enemyRuntime = new Map<string, EnemyRuntime>();
   private nextEnemy = 0;
-  private enemiesSent = 0;
-  private enemyTimer?: { clear(): void };
 
   onCreate() {
+    this.onMessage("ready", () => {
+      if (this.state.phase === "intro") this.state.phase = "fight";
+    });
     this.onMessage("move", (client, target: { x: number; z: number; run?: boolean }) => {
       const runtime = this.runtime.get(client.sessionId);
 
-      if (!runtime || !target) return;
+      if (!runtime || !target || this.state.phase !== "fight") return;
       const player = this.state.players.get(client.sessionId);
       const area = AREAS[player?.area ?? "city"];
 
@@ -116,10 +114,16 @@ export class Arena extends Room {
       runtime.running = Boolean(target.run);
       runtime.pending = undefined;
     });
-    this.onMessage("fire", (client, aim: number) => this.fire(client.sessionId, Number(aim) || 0));
-    this.onMessage("slash", (client, aim: number) => this.slash(client.sessionId, Number(aim) || 0));
-    this.onMessage("bolt", (client, aim: number) => this.bolt(client.sessionId, Number(aim) || 0));
-    this.onMessage("interact", (client, id: string) => this.interact(client.sessionId, String(id)));
+    const fighting = (action: (id: string, aim: number) => void) => (client: Client, aim: number) => {
+      if (this.state.phase === "fight") action.call(this, client.sessionId, Number(aim) || 0);
+    };
+
+    this.onMessage("fire", fighting(this.fire));
+    this.onMessage("slash", fighting(this.slash));
+    this.onMessage("bolt", fighting(this.bolt));
+    this.onMessage("interact", (client, id: string) => {
+      if (this.state.phase === "fight") this.interact(client.sessionId, String(id));
+    });
     this.onMessage("equip", (client, kind: string) => {
       const player = this.state.players.get(client.sessionId);
 
@@ -131,13 +135,11 @@ export class Arena extends Room {
 
   onJoin(client: Client) {
     const player = new Player();
-    const angle = Math.random() * Math.PI * 2;
-    const distance = Math.random() * 240;
-
     player.name = "VIRGILIU";
     player.hue = (this.nextPlayer * 0.381966) % 1;
-    player.x = SPAWN.x + Math.cos(angle) * distance;
-    player.z = SPAWN.y + Math.sin(angle) * distance * DEPTH_SCALE;
+    player.x = SPAWN.x;
+    player.z = SPAWN.y;
+    player.aim = Math.atan2(ENEMY_GATE.x - SPAWN.x, ENEMY_GATE.y - SPAWN.y);
     this.nextPlayer++;
     this.state.players.set(client.sessionId, player);
     this.runtime.set(client.sessionId, {
@@ -151,7 +153,7 @@ export class Arena extends Room {
       pushX: 0,
       pushZ: 0,
     });
-    if (this.state.enemies.size === 0 && !this.enemyTimer) this.scheduleEnemy(FIRST_ENEMY_MS);
+    if (this.state.enemies.size === 0) this.spawnEnemy("donkey");
   }
 
   onLeave(client: Client) {
@@ -478,24 +480,15 @@ export class Arena extends Room {
     });
   }
 
-  private scheduleEnemy(delay: number) {
-    this.enemyTimer?.clear();
-    this.enemyTimer = this.clock.setTimeout(() => {
-      this.enemyTimer = undefined;
-      if (this.state.players.size > 0) this.spawnEnemy();
-    }, delay);
-  }
-
-  private spawnEnemy() {
-    const kind = this.enemiesSent % 3 === 2 ? "donkey" : "cop";
+  private spawnEnemy(kind: string) {
     const stats = ENEMY_KINDS[kind];
     const enemy = new Enemy();
     const id = `enemy${this.nextEnemy++}`;
 
-    this.enemiesSent++;
     enemy.kind = kind;
     enemy.x = ENEMY_GATE.x;
     enemy.z = ENEMY_GATE.y;
+    enemy.aim = Math.atan2(SPAWN.x - ENEMY_GATE.x, SPAWN.y - ENEMY_GATE.y);
     enemy.health = enemy.maxHealth = stats.health;
     this.state.enemies.set(id, enemy);
     this.enemyRuntime.set(id, {
@@ -519,7 +512,7 @@ export class Arena extends Room {
     this.broadcast("enemyDown", { id, kind: enemy.kind, x: enemy.x, z: enemy.z, aim: enemy.aim });
     this.state.enemies.delete(id);
     this.enemyRuntime.delete(id);
-    this.scheduleEnemy(NEXT_ENEMY_MS);
+    if (this.state.enemies.size === 0) this.state.phase = "won";
   }
 
   private hurtPlayer(id: string, player: Player, damage: number, pushX: number, pushZ: number) {
@@ -535,22 +528,17 @@ export class Arena extends Room {
     player.moving = player.running = false;
     runtime.hasTarget = false;
     runtime.pending = undefined;
-    this.clock.setTimeout(() => {
-      if (!this.state.players.has(id)) return;
-      player.x = SPAWN.x;
-      player.z = SPAWN.y;
-      player.area = "city";
-      player.health = HEALTH_MAX;
-      player.alive = true;
-      runtime.pushX = runtime.pushZ = 0;
-    }, RESPAWN_HERO_MS);
+    this.state.phase = "lost";
   }
 
   /** Walks at the nearest living hero, side-stepping when a house blocks the way, and strikes when close. */
   private stepEnemy(id: string, enemy: Enemy, dt: number) {
     const runtime = this.enemyRuntime.get(id);
 
-    if (!runtime) return;
+    if (!runtime || this.state.phase !== "fight") {
+      enemy.moving = false;
+      return;
+    }
     const stats = ENEMY_KINDS[enemy.kind];
     const now = this.clock.currentTime;
     let target: { id: string; player: Player } | undefined;

@@ -15,6 +15,7 @@ type PlayerState = {
   area: string;
   mana: number;
   health: number;
+  maxHealth: number;
   alive: boolean;
   kills: number;
   weapon: string;
@@ -32,7 +33,23 @@ const HOLD_MS = 280;
 const BOLT_REPEAT_MS = 560;
 const PICK_RADIUS = 58;
 const DEPTH_SCALE = 0.72;
-const ENEMY_NAMES: Record<string, string> = { cop: "POLICEMAN", donkey: "DONKEY COP" };
+const ENEMY_NAMES: Record<string, string> = { cop: "POLIȚIST", donkey: "POLIȚIST" };
+const ZOOM_SECONDS = 3.2;
+const FIGHT_ZOOM = 0.8;
+const TYPE_SPEED = 45;
+/* The face-off before the fight: English first, the Romanian under it. */
+const DIALOGUE = [
+  {
+    who: "POLIȚIST", portrait: "portrait_donkey",
+    english: "Did you think nobody would notice the missing copper? You've got two choices: hand over every kilo of copper you stole, the easy way or the hard way. Your call.",
+    romanian: "Credeai că nu observă nimeni că lipsește cuprul? Ai două variante: îmi dai toate kilogramele de cupru pe care le-ai furat, de bunăvoie sau cu forța. Tu alegi.",
+  },
+  {
+    who: "VIRGILIU", portrait: "portrait_hero",
+    english: "I do shit on your elders.",
+    romanian: "Mă cac pe morții tăi.",
+  },
+];
 const ENEMY_ATTACK_MS = 520;
 const DYING_MS = 900;
 const ITEM_NAMES: Record<string, string> = {
@@ -49,6 +66,15 @@ const enemyLag = document.getElementById("enemy-lag")!;
 const enemyName = document.getElementById("enemy-name")!;
 const enemyPortrait = document.getElementById("enemy-portrait") as HTMLImageElement;
 const heroPortrait = document.getElementById("hero-portrait") as HTMLImageElement;
+const talk = document.getElementById("talk")!;
+const talkScene = document.getElementById("talk-scene") as HTMLImageElement;
+const talkPortrait = document.getElementById("talk-portrait") as HTMLImageElement;
+const talkName = document.getElementById("talk-name")!;
+const talkEnglish = document.getElementById("talk-english")!;
+const talkRomanian = document.getElementById("talk-romanian")!;
+const banner = document.getElementById("banner")!;
+const bannerText = document.getElementById("banner-text")!;
+const bannerHint = document.getElementById("banner-hint")!;
 const panel = document.getElementById("panel")!;
 const panelHint = document.getElementById("panel-hint")!;
 const slots = document.getElementById("slots")!;
@@ -70,6 +96,92 @@ const [art, room] = await Promise.all([
 ]);
 const renderer = new Renderer(canvas, art);
 heroPortrait.src = artUrl(base, "portrait_hero");
+talkScene.src = artUrl(base, "scene_talk");
+
+/* Intro: the camera flies in on the two of them, then the dialogue, then the fight. */
+let stage: "zoom" | "talk" | "fight" | "over" = "zoom";
+let stageTime = 0;
+let line = 0;
+let typed = 0;
+let zoomedOut = false;
+
+function showBanner(text: string, hint: string, seconds: number) {
+  bannerText.textContent = text;
+  bannerHint.textContent = hint;
+  banner.hidden = false;
+  banner.classList.remove("pop");
+  void banner.offsetWidth;
+  banner.classList.add("pop");
+  if (seconds > 0) setTimeout(() => (banner.hidden = true), seconds * 1000);
+}
+
+function showLine() {
+  const current = DIALOGUE[line];
+
+  talkPortrait.src = artUrl(base, current.portrait);
+  talkName.textContent = current.who;
+  typed = 0;
+}
+
+function advanceTalk() {
+  const current = DIALOGUE[line];
+
+  if (typed < current.english.length) {
+    typed = current.english.length;
+    return;
+  }
+  line++;
+  if (line < DIALOGUE.length) {
+    showLine();
+    return;
+  }
+  talk.hidden = true;
+  stage = "fight";
+  document.body.classList.remove("cutscene");
+  room.send("ready");
+  showBanner("FIGHT!", "", 1.3);
+}
+
+function updateTalk(dt: number) {
+  const current = DIALOGUE[line];
+
+  typed = Math.min(current.english.length, typed + dt * TYPE_SPEED);
+  talkEnglish.textContent = current.english.slice(0, Math.floor(typed));
+  talkRomanian.textContent = typed >= current.english.length ? current.romanian : "";
+}
+
+/* Returns true while the intro owns the camera and the controls. */
+function updateIntro(dt: number, self: PlayerView | undefined, enemy: EnemyView | undefined) {
+  if (stage === "fight" || stage === "over") {
+    /* Ease back out to the playing zoom once, then the wheel decides. */
+    if (!zoomedOut) {
+      camera.zoom += (FIGHT_ZOOM - camera.zoom) * (1 - Math.exp(-3 * dt));
+      if (Math.abs(camera.zoom - FIGHT_ZOOM) < 0.01) zoomedOut = true;
+    }
+    return false;
+  }
+  if (!self || !enemy) return true;
+  stageTime += dt;
+  const ease = Math.min(1, stageTime / ZOOM_SECONDS);
+  const smooth = ease * ease * (3 - 2 * ease);
+
+  camera.x = (self.x + enemy.x) / 2;
+  camera.y = (self.y + enemy.y) / 2 - 90;
+  camera.zoom = ZOOM_MIN + (1.15 - ZOOM_MIN) * smooth;
+  if (stage === "zoom" && stageTime > ZOOM_SECONDS + 0.4) {
+    stage = "talk";
+    talk.hidden = false;
+    showLine();
+  }
+  if (stage === "talk") updateTalk(dt);
+  return true;
+}
+
+function checkEnd(phase: string) {
+  if (stage !== "fight" || (phase !== "won" && phase !== "lost")) return;
+  stage = "over";
+  showBanner(phase === "won" ? "VICTORY!" : "DEFEAT", "click to fight again", 0);
+}
 const camera: Camera = { x: SPAWN.x, y: SPAWN.y, zoom: 0.8 };
 const views = new Map<string, PlayerView>();
 const enemyViews = new Map<string, EnemyView>();
@@ -179,7 +291,7 @@ function setBar(fill: HTMLElement, lag: HTMLElement, share: number) {
 
 function updateHud(self: PlayerState | undefined, enemies: Map<string, EnemyState>, now: number) {
   if (self) {
-    setBar(heroFill, heroLag, self.health / 100);
+    setBar(heroFill, heroLag, self.health / self.maxHealth);
     manaFill.style.width = `${self.mana}%`;
     heroScore.textContent = String(self.kills * 1000).padStart(6, "0");
   }
@@ -323,7 +435,15 @@ function touchPress(timeStamp: number) {
 }
 
 addEventListener("pointerdown", (event) => {
-  if (event.target !== canvas) return;
+  if (stage === "talk") {
+    advanceTalk();
+    return;
+  }
+  if (stage === "over") {
+    location.reload();
+    return;
+  }
+  if (event.target !== canvas || stage !== "fight") return;
   pointer.x = event.clientX;
   pointer.y = event.clientY;
   if (event.pointerType === "touch") {
@@ -342,11 +462,18 @@ addEventListener("pointerup", pointerReleased);
 addEventListener("pointercancel", pointerReleased);
 addEventListener("blur", stopHolding);
 addEventListener("keydown", (event) => {
+  if (stage === "talk" && (event.code === "Space" || event.code === "Enter")) {
+    if (!event.repeat) advanceTalk();
+    return;
+  }
+  if (stage !== "fight") return;
   if (event.code === "Space" && !event.repeat) room.send("fire", aimFromPointer());
   if (event.code === "KeyM" && !event.repeat) panel.hidden = !panel.hidden;
   if (event.code === "Escape") panel.hidden = true;
 });
 addEventListener("wheel", (event) => {
+  if (stage !== "fight" && stage !== "over") return;
+  zoomedOut = true;
   camera.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, camera.zoom * (event.deltaY > 0 ? 0.9 : 1.1)));
 });
 addEventListener("resize", () => renderer.resize());
@@ -436,12 +563,16 @@ function frame(now: number) {
   if (selfState) renderInventory(selfState);
 
   const self = views.get(room.sessionId);
+  const inIntro = updateIntro(dt, self, [...enemyViews.values()][0]);
 
-  if (self) {
+  checkEnd(room.state.phase);
+  if (self && !inIntro) {
     const follow = cameraReady ? 1 - Math.exp(-5 * dt) : 1;
 
     camera.x += (self.x - camera.x) * follow;
     camera.y += (self.y - 60 - camera.y) * follow;
+    cameraReady = true;
+  } else if (inIntro) {
     cameraReady = true;
   }
   renderer.clampCamera(camera, currentArea);
