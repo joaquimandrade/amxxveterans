@@ -225,15 +225,12 @@ function drawBar(thing: Thing, highlight: boolean) {
   context.fillStyle = share > 0.5 ? "#7bd35a" : share > 0.25 ? "#f2c230" : "#ef4b3a";
   context.fillRect(x, y, width * share, 8);
   if (highlight) {
-    const weak = KINDS[thing.kind].weak;
-    const best = WEAPONS.reduce((a, b) => (weak[b] > weak[a] ? b : a));
-
     context.font = "600 18px system-ui, sans-serif";
     context.textAlign = "center";
     context.fillStyle = "#fff";
     context.strokeStyle = "rgba(0,0,0,0.8)";
     context.lineWidth = 4;
-    const label = `${KINDS[thing.kind].label}  weak to ${WEAPON_INFO[best].icon}`;
+    const label = KINDS[thing.kind].label;
 
     context.strokeText(label, thing.x, y - 8);
     context.fillText(label, thing.x, y - 8);
