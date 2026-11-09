@@ -3,41 +3,76 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>AMXX Veterans</title>
+    <title>French Rebellion</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&display=swap" rel="stylesheet" />
     <style>
-      html, body { margin: 0; touch-action: none; user-select: none; -webkit-user-select: none; height: 100%; overflow: hidden; background: #0c0e18; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b10; color: #fff; touch-action: none; user-select: none; -webkit-user-select: none; font-family: system-ui, sans-serif; }
       canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
-      #hud {
-        position: fixed; top: 12px; left: 14px; color: #f3e6d0; pointer-events: none;
-        font: 14px/1.5 ui-monospace, Menlo, Consolas, monospace; text-shadow: 0 1px 3px #000;
-      }
-      #hud b { color: #ffb347; }
-      #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; }
-      #mana { position: fixed; left: 14px; bottom: 16px; width: 220px; height: 16px; background: #1b2238cc; border: 2px solid #c9a86a; border-radius: 3px; }
-      #mana-fill { height: 100%; background: linear-gradient(#6aa8ff, #2a56c8); }
-      #panel {
-        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100vw - 32px));
-        padding: 18px; color: #3a2a18; background: #e6d3a8; border: 4px solid #6b4a24; border-radius: 6px;
-        box-shadow: 0 10px 40px #000a; font: 15px/1.4 Georgia, serif;
-      }
-      #panel h2 { margin: 0 0 4px; font-size: 22px; }
-      #panel p { margin: 0 0 12px; font-size: 14px; }
-      #slots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-      .slot { aspect-ratio: 1; padding: 6px; border: 2px solid #8a6a3a; border-radius: 4px; background: #d2bb8a; font: inherit; }
-      .slot img { display: block; width: 100%; height: 100%; object-fit: contain; }
-      .slot.usable { cursor: pointer; }
-      .slot.usable:hover, .slot.usable:focus { border-color: #2a56c8; }
-      .slot.equipped { border-color: #c8501a; background: #e8c47a; box-shadow: inset 0 0 0 2px #c8501a; }
+      [hidden] { display: none !important; }
+      .screen { position: fixed; inset: 0; display: grid; place-items: center; background: #0d0b10; }
+      .stencil { font-family: "Black Ops One", Impact, sans-serif; letter-spacing: 1px; }
+
+      #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #0d0b10; z-index: 9; font-size: 18px; color: #c9b8a0; }
+
+      #title img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 35%; }
+      #title .tap { position: absolute; bottom: 7vh; left: 0; right: 0; text-align: center; font-size: clamp(18px, 4vw, 30px); text-shadow: 0 3px 10px #000; animation: blink 1.2s steps(2) infinite; }
+      @keyframes blink { 50% { opacity: 0.25; } }
+
+      #select { align-content: center; gap: 18px; padding: 16px; background: radial-gradient(circle at 50% 30%, #3a1d10, #0d0b10 70%); }
+      #select h2 { margin: 0; text-align: center; font-size: clamp(22px, 5vw, 40px); color: #fff; text-shadow: 3px 3px 0 #b3261e; }
+      #cards { display: grid; grid-template-columns: repeat(3, minmax(0, 220px)); gap: 12px; justify-content: center; }
+      .card { display: grid; gap: 6px; padding: 8px 8px 12px; background: #1d1714; border: 2px solid #5a4030; border-radius: 10px; color: #fff; font: inherit; cursor: pointer; }
+      .card:hover, .card:focus-visible { border-color: #ffb347; transform: translateY(-3px); }
+      .card img { width: 100%; aspect-ratio: 3 / 5; object-fit: cover; object-position: top; border-radius: 6px; background: #2a2a2a; }
+      .card b { font-size: clamp(14px, 3.4vw, 19px); }
+      .card span { font-size: clamp(11px, 2.8vw, 14px); color: #ffcf8a; }
+
+      #hud { position: fixed; inset: 0; pointer-events: none; }
+      #board { position: absolute; top: 8px; left: 8px; display: grid; gap: 4px; width: min(250px, 46vw); }
+      .row { display: grid; grid-template-columns: 18px 30px 1fr auto; align-items: center; gap: 6px; padding: 3px 8px 3px 4px; background: rgba(10, 8, 6, 0.72); border-radius: 6px; font-size: 13px; font-weight: 700; }
+      .row.me { outline: 2px solid #ffd23a; }
+      .row img { width: 30px; height: 30px; border-radius: 4px; object-fit: cover; }
+      .row .pos { text-align: center; color: #aaa; }
+      .row .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .row .score { font-variant-numeric: tabular-nums; }
+      #clock { position: absolute; top: 8px; right: 10px; padding: 4px 12px; background: rgba(10, 8, 6, 0.72); border-radius: 6px; font: 26px "Black Ops One", Impact, sans-serif; }
+      #clock.hurry { color: #ff5a4a; }
+      #weapons { position: absolute; right: 10px; bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; gap: 10px; pointer-events: auto; }
+      .weapon { width: 74px; height: 74px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.35); background: rgba(20, 14, 10, 0.8); color: #fff; display: grid; place-content: center; gap: 0; cursor: pointer; padding: 0; }
+      .weapon span { font-size: 30px; line-height: 1; }
+      .weapon small { font-size: 10px; opacity: 0.8; }
+      .weapon.on { border-color: #ffd23a; background: rgba(120, 60, 10, 0.9); box-shadow: 0 0 18px #ff9a3c; }
+      .weapon.best::after { content: "★"; position: absolute; margin: -30px 0 0 48px; color: #ffd23a; font-size: 16px; }
+
+      #results { align-content: center; gap: 14px; text-align: center; background: rgba(8, 5, 4, 0.92); }
+      #verdict { font-size: clamp(26px, 7vw, 54px); text-shadow: 3px 3px 0 #b3261e; }
+      #final { display: grid; gap: 6px; font-size: 20px; }
+      #final .me { color: #ffd23a; }
+      #again { justify-self: center; margin-top: 10px; padding: 12px 28px; font: 22px "Black Ops One", Impact, sans-serif; color: #fff; background: #b3261e; border: 0; border-radius: 8px; cursor: pointer; }
     </style>
   </head>
   <body>
-    <div id="fade"></div>
-    <div id="hud">connecting…</div>
-    <div id="mana"><div id="mana-fill"></div></div>
-    <section id="panel" hidden>
-      <h2>Inventory</h2>
-      <p id="panel-hint">Click a weapon to equip it, or a potion to drink it. M closes.</p>
-      <div id="slots"></div>
+    <canvas></canvas>
+    <div id="loading">Loading…</div>
+    <section id="title" class="screen">
+      <img alt="French Rebellion" />
+      <div class="tap stencil">TAP TO START</div>
+    </section>
+    <section id="select" class="screen" hidden>
+      <h2 class="stencil">CHOOSE YOUR REBEL</h2>
+      <div id="cards"></div>
+    </section>
+    <div id="hud" hidden>
+      <div id="board"></div>
+      <div id="clock">3:00</div>
+      <div id="weapons"></div>
+    </div>
+    <section id="results" class="screen" hidden>
+      <div id="verdict" class="stencil"></div>
+      <div id="summary"></div>
+      <div id="final"></div>
+      <button id="again" type="button">PLAY AGAIN</button>
     </section>
     <script type="module" src="/src/main.ts"></script>
   </body>
