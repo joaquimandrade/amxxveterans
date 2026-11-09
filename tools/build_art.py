@@ -21,11 +21,9 @@ WEAPONS = ["molotov", "bat", "shotgun"]
 WORLD_W = 3600
 PREVIEW_W = 1100           # layout coordinates below were measured on an 1100 wide preview of the ground
 
-# Sheets painted facing left are mirrored so every sprite faces right; the game flips them when moving left.
-MIRROR = {
-    "pyro_bat_front": True, "pyro_shotgun_back": True,
-    "chasseur_bat_front": True, "chasseur_shotgun_back": True, "chasseur_molotov_back": True,
-}
+# Every sprite must face right; the game mirrors it when moving or aiming left. Attack sheets are checked
+# automatically (see faces_left); this table forces a sheet either way when the check gets it wrong.
+MIRROR = {}
 
 
 def load(name):
@@ -97,6 +95,14 @@ def row_cells(rgb, alpha, count):
     return frames
 
 
+def faces_left(frames):
+    """In the strike frame the weapon, arm or muzzle flash reaches out in front: compare its mass either side of the feet."""
+    rgb, mask, center, _ = frames[2]
+    ys, xs = np.where(mask > 0.5)
+    upper = ys < ys.min() + (ys.max() - ys.min()) * 0.6
+    return float(np.mean(xs[upper])) < center
+
+
 def write_sheet(frames, out, mirror):
     heights = [body_height(mask) for _, mask, _, _ in frames]
     scale = BODY_HEIGHT / float(np.median(heights))
@@ -123,7 +129,8 @@ def characters():
             for side, prefix in (("front", "atk"), ("back", "atkb")):
                 rgb = load(f"{name}_{prefix}_{weapon}")
                 out = f"{name}_{weapon}_{side}"
-                write_sheet(row_cells(rgb, key_alpha(rgb), 5), out, MIRROR.get(out, False))
+                frames = row_cells(rgb, key_alpha(rgb), 5)
+                write_sheet(frames, out, MIRROR.get(out, faces_left(frames)))
 
 
 def cut_objects(name, count, rows):
