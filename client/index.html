@@ -16,6 +16,9 @@
       #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #0d0b10; z-index: 9; font-size: 18px; color: #c9b8a0; }
 
       #title img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 35%; }
+      #title img.backdrop { filter: blur(18px) brightness(0.55); transform: scale(1.1); }
+      /* Upright phones: show the whole painting, title included, over a blurred copy of itself */
+      @media (orientation: portrait) { #title img.art { object-fit: contain; object-position: center 30%; } }
       #title .tap { position: absolute; bottom: 7vh; left: 0; right: 0; text-align: center; font-size: clamp(18px, 4vw, 30px); text-shadow: 0 3px 10px #000; animation: blink 1.2s steps(2) infinite; }
       @keyframes blink { 50% { opacity: 0.25; } }
 
@@ -56,7 +59,8 @@
     <canvas></canvas>
     <div id="loading">Loading…</div>
     <section id="title" class="screen">
-      <img alt="French Rebellion" />
+      <img class="backdrop" alt="" />
+      <img class="art" alt="French Rebellion" />
       <div class="tap stencil">TAP TO START</div>
     </section>
     <section id="select" class="screen" hidden>

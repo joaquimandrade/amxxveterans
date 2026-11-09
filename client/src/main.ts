@@ -40,7 +40,7 @@ const select = $("select");
 const hud = $("hud");
 const results = $("results");
 
-(title.querySelector("img") as HTMLImageElement).src = art("title");
+for (const image of title.querySelectorAll("img")) image.src = art("title");
 
 title.addEventListener("pointerdown", () => {
   title.hidden = true;
