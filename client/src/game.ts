@@ -261,8 +261,9 @@ export class Game {
         const reach = end * rand(0.8, 1.05);
         this.tracers.push({ x0: mx, y0: my, x1: mx + (ux * cos - uy * sin) * reach, y1: my + (ux * sin + uy * cos) * reach + 30, life: 0.09 });
       }
-      for (let i = 0; i < 3; i++) this.puff("flame", mx + ux * 10, a.y + uy * 30, 62);
-      this.puff("smoke", mx, a.y + uy * 30, 62);
+      // The painted firing frame already has its flash: one small puff well in front of the muzzle is enough.
+      this.puff("flame", mx + ux * 34, a.y + uy * 52, 62);
+      this.particles[this.particles.length - 1].size = 11;
       if (a.isPlayer || this.near(a.x, a.y)) this.sounds.push("shot");
       if (a.isPlayer) this.shake = Math.max(this.shake, 0.14);
     } else {
