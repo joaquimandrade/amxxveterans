@@ -95,7 +95,12 @@ function dab(inner: string, outer: string) {
 const flames = [dab("rgba(255,240,170,.55)", "rgba(255,150,30,0)"), dab("rgba(255,170,60,.5)", "rgba(230,60,10,0)"), dab("rgba(255,110,40,.45)", "rgba(150,20,0,0)")];
 const smoke = dab("rgba(60,54,50,.3)", "rgba(40,36,34,0)");
 
-export const camera = { x: WORLD.w / 2, y: WORLD.h / 2, zoom: 1, left: 0, top: 0 };
+export const camera = { x: WORLD.w / 2, y: WORLD.h / 2, zoom: 1, left: 0, top: 0, wheel: 1 };
+
+/** Mouse wheel or pinch: multiplies the zoom the screen size would give. */
+export function zoomBy(factor: number) {
+  camera.wheel = Math.max(0.6, Math.min(2.2, camera.wheel * factor));
+}
 
 export function toWorld(sx: number, sy: number) {
   return { x: camera.left + sx / camera.zoom, y: camera.top + sy / camera.zoom };
@@ -113,7 +118,8 @@ function actorFrame(a: Actor): [string, number] {
   }
   if (a.moving) return [`${a.sheet}_walk_${side}`, Math.floor(a.walk / 30) % 4];
   // Standing still shows the ready stance of the weapon in hand.
-  return [`${a.sheet}_${a.weapon}_${side}`, 0];
+  // From behind the weapon is hidden by the body, and painted back views of that frame often turn round.
+  return a.back ? [`${a.sheet}_idle_back`, 0] : [`${a.sheet}_${a.weapon}_front`, 0];
 }
 
 function drawActor(c: CanvasRenderingContext2D, a: Actor, time: number) {
@@ -185,7 +191,7 @@ function drawBar(c: CanvasRenderingContext2D, o: Obj, game: Game) {
 }
 
 export function draw(c: CanvasRenderingContext2D, game: Game, width: number, height: number, dpr: number, time: number, dt: number) {
-  const zoom = Math.max(0.5, Math.min(0.95, Math.sqrt(width * height) / 950));
+  const zoom = Math.max(0.6, Math.min(1, Math.sqrt(width * height) / 900)) * camera.wheel;
   const p = game.player;
   const viewW = width / zoom, viewH = height / zoom;
   const follow = 1 - Math.exp(-dt * 7);
@@ -193,7 +199,7 @@ export function draw(c: CanvasRenderingContext2D, game: Game, width: number, hei
   camera.zoom = zoom;
   camera.x += (p.x - camera.x) * follow;
   camera.y += (p.y - 60 - camera.y) * follow;
-  const topLimit = WORLD.shopBase - 400;
+  const topLimit = WORLD.shopBase - 590;
   let left = viewW >= WORLD.w ? (WORLD.w - viewW) / 2 : Math.max(0, Math.min(WORLD.w - viewW, camera.x - viewW / 2));
   let top = viewH >= WORLD.h - topLimit ? (WORLD.h + topLimit - viewH) / 2 : Math.max(topLimit, Math.min(WORLD.h - viewH, camera.y - viewH / 2));
 
@@ -228,11 +234,21 @@ export function draw(c: CanvasRenderingContext2D, game: Game, width: number, hei
   }
   c.globalCompositeOperation = "source-over";
 
-  const target = game.autoTarget;
-  if (target && !game.over && !game.demo) {
-    c.strokeStyle = "rgba(255,216,74,.85)"; c.lineWidth = 3; c.setLineDash([10, 8]); c.lineDashOffset = -time * 30;
-    c.beginPath(); c.ellipse(target.x, target.y - target.def.depth / 2, (target.x1 - target.x0) / 2 + 14, Math.max(16, target.def.depth / 2 + 12), 0, 0, 7); c.stroke();
+  const target = game.order?.obj;
+  if (target && !target.dead && !game.over && !game.demo) {
+    c.strokeStyle = "rgba(255,216,74,.9)"; c.lineWidth = 3.5; c.setLineDash([10, 8]); c.lineDashOffset = -time * 30;
+    c.beginPath(); c.ellipse(target.x, target.y - target.def.depth / 2, Math.max(30, (target.x1 - target.x0) / 2 + 14), Math.max(16, target.def.depth / 2 + 12), 0, 0, 7); c.stroke();
     c.setLineDash([]);
+  }
+  const marker = game.marker;
+  if (marker && !game.over) {
+    // Where the last tap on the ground landed: a ring that settles, with a dot in the middle.
+    const grow = 1 + Math.max(0, marker.life - 0.25) * 1.6;
+    c.strokeStyle = game.player.color; c.fillStyle = game.player.color; c.lineWidth = 3;
+    c.globalAlpha = 0.9;
+    c.beginPath(); c.ellipse(marker.x, marker.y, 20 * grow, 8 * grow, 0, 0, 7); c.stroke();
+    c.beginPath(); c.ellipse(marker.x, marker.y, 5, 2.5, 0, 0, 7); c.fill();
+    c.globalAlpha = 1;
   }
 
   const visible = (x: number, y: number, w: number, h: number) => x + w > left && x - w < left + viewW && y > top - 20 && y - h < top + viewH;

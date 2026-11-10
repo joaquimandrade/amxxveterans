@@ -46,21 +46,14 @@ h2 { margin: 0; font-size: clamp(22px, 5.4vw, 34px); letter-spacing: .04em; text
 #mute.off { opacity: .45; text-decoration: line-through; }
 #hint { left: 50%; top: 112px; transform: translateX(-50%); width: max-content; max-width: 92vw; padding: 6px 12px; border-radius: 10px; background: #1a1412c4;
   font-size: 13px; text-align: center; pointer-events: none; transition: opacity .6s; }
-#stick { width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 3px solid #f3e6d066; background: #1a141244; pointer-events: none; opacity: 0; transition: opacity .15s; }
-#stick.on { opacity: 1; }
-#stick i { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px; border-radius: 50%; background: #f3e6d0bb; }
-#attack { right: max(16px, env(safe-area-inset-right)); bottom: max(22px, env(safe-area-inset-bottom)); width: 104px; height: 104px; border-radius: 50%;
-  background: radial-gradient(#e8573f, #a82a1a); border: 4px solid #ffd9c9cc; box-shadow: 0 6px 18px #000a; padding: 14px; }
-#attack img { width: 100%; height: 100%; pointer-events: none; filter: drop-shadow(0 2px 3px #0008); }
-#attack.down { transform: scale(.93); filter: brightness(1.25); }
-#weapons { right: max(12px, env(safe-area-inset-right)); bottom: calc(max(22px, env(safe-area-inset-bottom)) + 118px); display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
-#weapons button { position: relative; width: 64px; height: 64px; border-radius: 16px; background: #1a1412d0; border: 3px solid #5a4230; padding: 5px; }
+#weapons { right: max(12px, env(safe-area-inset-right)); bottom: max(22px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+#weapons button { position: relative; width: 70px; height: 70px; border-radius: 16px; background: #1a1412d0; border: 3px solid #5a4230; padding: 5px; }
 #weapons button img { width: 100%; height: 100%; pointer-events: none; }
 #weapons button.on { border-color: var(--gold); background: #4a3520f0; transform: scale(1.1); box-shadow: 0 0 16px #ffd84a88; }
 #weapons button em { position: absolute; left: -8px; top: -8px; padding: 0 5px; border-radius: 8px; background: var(--gold); color: var(--ink); font: 800 11px/16px system-ui; }
 #weapons button kbd { position: absolute; right: 3px; bottom: 1px; font: 700 10px system-ui; opacity: .6; }
 @media (pointer: coarse) { #weapons button kbd { display: none; } }
-@media (max-height: 480px) { #weapons { flex-direction: row; bottom: max(22px, env(safe-area-inset-bottom)); right: calc(max(16px, env(safe-area-inset-right)) + 118px); } }
+@media (max-height: 480px) { #weapons { flex-direction: row; } }
 
 #end { background: #1a1412b8; }
 .panel { width: min(92vw, 400px); padding: 22px 20px 26px; border-radius: 18px; background: #2a1f1bf2; border: 3px solid #5a4230; display: flex; flex-direction: column; gap: 16px; align-items: center; }

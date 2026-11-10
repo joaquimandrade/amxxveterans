@@ -65,7 +65,9 @@ FRONT = (
 BACK = (
     "three-quarter BACK view: the character is seen from behind and faces AWAY from the camera; the body and "
     "the whole action are directed toward the upper-right of the picture (away from the viewer and to the "
-    "viewer's right). We see the back of the head and the back of the jacket; the face is hidden or barely visible"
+    "viewer's right). We see the back of the head and the back of the jacket; the face is hidden or barely visible. The camera stays BEHIND "
+    "the character in every single frame, including the first frame and the wind-up: never show the chest or the "
+    "front of the face, and the character never turns round toward the viewer. Exactly one weapon per frame"
 )
 
 SHEET = (
@@ -104,7 +106,8 @@ ATTACKS = {
         "1) standing fully upright and relaxed, the shotgun held low across the body in both hands, muzzle pointing at the ground;\n"
         "2) aiming: the shotgun shouldered and pointed toward the view direction, knees slightly bent;\n"
         "3) firing: same aim, a bright yellow-orange muzzle flash at the end of the barrel, shoulders pushed back by the recoil;\n"
-        "4) recovering: the barrel lifted a little by the recoil, the front hand pulling the pump back, a wisp of smoke."
+        "4) recovering: the barrel lifted a little by the recoil, the front hand pulling the pump back, a wisp of smoke.\n"
+        "The muzzle flash is small and stays well clear of the next figure: there is always empty background between two figures."
     ),
 }
 
@@ -310,6 +313,6 @@ if __name__ == "__main__":
         wanted += [n for n in JOBS if n.startswith(arg[:-1])] if arg.endswith("*") else [arg]
     # Sheets painted from another sheet (a character reference, an intact object sheet) wait for it.
     for stage in (lambda n: not JOBS[n]["refs"], lambda n: JOBS[n]["refs"]):
-        with ThreadPoolExecutor(8) as pool:
+        with ThreadPoolExecutor(int(os.environ.get("ART_JOBS", "3"))) as pool:
             for line in pool.map(run, [n for n in wanted if stage(n)]):
                 print(line, flush=True)

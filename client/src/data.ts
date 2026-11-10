@@ -72,23 +72,23 @@ export const OBJECTS: Record<string, ObjDef> = {
   banque: shop("Bank", "shotgun", 440), boutique: shop("Boutique"), tabac: shop("Tabac"),
 };
 
-export const WORLD = { w: 2400, h: 1800, shopBase: 440 };
+export const WORLD = { w: 2400, h: 1800, shopBase: 250 };
 
 /** name, x of the centre, y of the base, mirrored */
 export const LAYOUT: [string, number, number, boolean?][] = [
-  ["boulangerie", 200, 440], ["cafe", 600, 440], ["banque", 1000, 440], ["boutique", 1400, 440],
-  ["pharmacie", 1800, 440], ["tabac", 2200, 440],
-  ["stall", 190, 610], ["terrace", 500, 590], ["terrace", 720, 600, true], ["meter", 880, 540],
-  ["lamp", 400, 545], ["lamp", 1200, 545], ["lamp", 2000, 545], ["panel", 1185, 640], ["booth", 1560, 560],
-  ["meter", 1690, 540], ["bins", 2260, 620],
-  ["hatch", 420, 830], ["saloon", 800, 840, true], ["taxi", 1620, 830], ["van", 2010, 850, true],
-  ["light", 150, 760], ["light", 2270, 800],
-  ["fountain", 860, 1010], ["statue", 1200, 1110], ["bench", 990, 1180], ["bench", 1420, 1180, true],
-  ["morris", 1560, 1010], ["bikes", 400, 1130], ["bins", 180, 1010],
-  ["kiosk", 690, 1330], ["scooter", 880, 1350], ["shelter", 1760, 1330], ["panel", 1500, 1400],
-  ["scooter", 2090, 1180, true], ["booth", 2180, 1380], ["terrace", 1960, 1090],
-  ["lamp", 500, 1500], ["lamp", 1200, 1480], ["lamp", 1900, 1500], ["meter", 1010, 1560],
+  ["boulangerie", 200, 250], ["cafe", 600, 250], ["banque", 1000, 250], ["boutique", 1400, 250],
+  ["pharmacie", 1800, 250], ["tabac", 2200, 250],
+  ["stall", 190, 420], ["terrace", 500, 400], ["terrace", 720, 410, true], ["meter", 880, 350],
+  ["lamp", 400, 355], ["lamp", 1200, 355], ["lamp", 2000, 355], ["panel", 1185, 450], ["booth", 1560, 370],
+  ["meter", 1690, 350], ["bins", 2260, 430],
+  ["hatch", 420, 640], ["saloon", 800, 650, true], ["taxi", 1620, 640], ["van", 2010, 660, true],
+  ["light", 150, 570], ["light", 2270, 610],
+  ["fountain", 860, 820], ["statue", 1200, 920], ["bench", 990, 990], ["bench", 1420, 990, true],
+  ["morris", 1560, 820], ["bikes", 400, 940], ["bins", 180, 820],
+  ["kiosk", 690, 1140], ["scooter", 880, 1160], ["shelter", 1760, 1140], ["panel", 1500, 1210],
+  ["scooter", 2090, 990, true], ["booth", 2180, 1190], ["terrace", 1960, 900],
+  ["lamp", 500, 1310], ["lamp", 1200, 1290], ["lamp", 1900, 1310], ["meter", 1010, 1370],
   ["suv", 720, 1700], ["hatch", 1140, 1710, true], ["saloon", 1560, 1700], ["taxi", 1990, 1710, true],
-  ["light", 330, 1660], ["light", 2240, 1640], ["stall", 250, 1400, true],
-  ["tree", 60, 700], ["tree", 60, 1250], ["tree", 2340, 1000], ["tree", 2340, 1560], ["tree", 60, 1740],
+  ["light", 330, 1660], ["light", 2240, 1640], ["stall", 250, 1210, true],
+  ["tree", 60, 510], ["tree", 60, 1060], ["tree", 2340, 810], ["tree", 2340, 1370], ["tree", 60, 1740],
 ];

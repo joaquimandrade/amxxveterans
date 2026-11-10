@@ -32,7 +32,6 @@ export interface Floater { x: number; y: number; text: string; color: string; li
 export interface Bottle { owner: Actor; x0: number; y0: number; x1: number; y1: number; t: number }
 export interface Fire { owner: Actor; x: number; y: number; life: number; tick: number }
 export interface Tracer { x0: number; y0: number; x1: number; y1: number; life: number }
-export interface Input { mx: number; my: number; attack: boolean; aim: { x: number; y: number } | null }
 
 const sizes = manifest.objects as Record<string, { size: number[]; wreck: number[] }>;
 const RADIUS = 14;
@@ -55,7 +54,10 @@ export class Game {
   time = ROUND_SECONDS;
   over = false;
   shake = 0;
-  autoTarget: Obj | null = null;
+  /** What the last click asked for: wreck an object, or walk to a spot. */
+  order: { obj: Obj | null; x: number; y: number } | null = null;
+  marker: { x: number; y: number; life: number } | null = null;
+  private steer: Bot = this.newBot("bat");
   /** Lets the test harness hand the player's character to a bot. */
   demo = false;
 
@@ -79,7 +81,7 @@ export class Game {
       ...others.map((c) => [c, c.name, c.id, c.color] as [CharDef, string, string, string]),
       [double, DOUBLES[doubleOf].name, `${doubleOf}_double`, DOUBLES[doubleOf].color],
     ];
-    const starts = [[1200, 900], [520, 980], [1880, 960], [1200, 1420]];
+    const starts = [[1200, 760], [520, 800], [1880, 780], [1200, 1260]];
 
     cast.forEach(([char, name, sheet, color], id) => {
       this.actors.push({
@@ -138,23 +140,6 @@ export class Game {
     // A little hysteresis so walking sideways does not flicker between front and back.
     if (dy / length < -0.3) a.back = true;
     else if (dy / length > -0.1) a.back = false;
-  }
-
-  /** The object the attack button would go for with this weapon, nearest and most in front first. */
-  private pickAuto(a: Actor): Obj | null {
-    const reach = WEAPONS[a.weapon].reach;
-    let best: Obj | null = null, bestScore = Infinity;
-
-    for (const o of this.objs) {
-      if (o.dead || o.def.decor) continue;
-      const { px, py, d } = this.nearest(o, a.x, a.y);
-      if (d > reach * (a.weapon === "bat" ? 1.6 : 1)) continue;
-      const ahead = ((px - a.x) * (a.flip ? -1 : 1)) / (d || 1);
-      const score = d - ahead * 40 - (o.def.weak === a.weapon ? 70 : 0) + (a.weapon !== "bat" && d < 60 ? 80 : 0);
-
-      if (score < bestScore) { best = o; bestScore = score; }
-    }
-    return best;
   }
 
   private aimPoint(a: Actor, o: Obj) {
@@ -320,45 +305,103 @@ export class Game {
       bot.retarget = rand(4, 7);
       if (best) bot.weapon = Math.random() < 0.72 ? best.def.weak : a.char.special;
     }
-    const o = bot.target;
-    if (!o) return;
+    if (!bot.target) return;
     a.weapon = bot.weapon;
+    this.pursue(a, bot, bot.target, dt, SPEED * 0.86, true);
+  }
+
+  /** Walks one step, sliding sideways for a moment whenever the way is blocked. Returns false while stuck. */
+  private walk(a: Actor, s: Bot, dx: number, dy: number, dt: number, speed: number) {
+    const length = Math.hypot(dx, dy) || 1;
+
+    dx /= length; dy /= length;
+    if (s.sideT > 0) {
+      s.sideT -= dt;
+      [dx, dy] = [-dy * s.side + dx * 0.25, dx * s.side + dy * 0.25];
+    }
+    this.move(a, dx, dy, dt, speed);
+    s.stuck += dt;
+    if (s.stuck > 0.4) {
+      if (Math.hypot(a.x - s.lastX, a.y - s.lastY) < 30) {
+        s.side = s.sideT > 0 ? -s.side : (Math.random() < 0.5 ? 1 : -1);
+        s.sideT = rand(0.5, 1.1);
+      }
+      s.stuck = 0; s.lastX = a.x; s.lastY = a.y;
+    }
+  }
+
+  /** Gets into range of an object for the weapon in hand, then keeps attacking it. Bots also hesitate and keep their distance. */
+  private pursue(a: Actor, s: Bot, o: Obj, dt: number, speed: number, cautious: boolean) {
     const { px, py, d } = this.nearest(o, a.x, a.y);
-    const [low, high] = a.weapon === "bat" ? [0, 54] : a.weapon === "shotgun" ? [70, 230] : [150, 330];
+    let [low, high] = a.weapon === "bat" ? [0, 54] : a.weapon === "shotgun" ? [70, 230] : [150, 330];
     let dx = 0, dy = 0;
 
+    if (!cautious) low = 0;
     if (d > high) { dx = px - a.x; dy = py - a.y; }
     else if (d < low) { dx = a.x - px; dy = a.y - py + 0.01; }
     if (dx || dy) {
-      const length = Math.hypot(dx, dy);
-      dx /= length; dy /= length;
-      if (bot.sideT > 0) {
-        // Slide around whatever is in the way.
-        bot.sideT -= dt;
-        [dx, dy] = [-dy * bot.side + dx * 0.25, dx * bot.side + dy * 0.25];
-      }
-      this.move(a, dx, dy, dt, SPEED * 0.86);
-      bot.stuck += dt;
-      if (bot.stuck > 0.4) {
-        if (Math.hypot(a.x - bot.lastX, a.y - bot.lastY) < 30) {
-          bot.side = bot.sideT > 0 ? -bot.side : (Math.random() < 0.5 ? 1 : -1);
-          bot.sideT = rand(0.5, 1.1);
-        }
-        bot.stuck = 0; bot.lastX = a.x; bot.lastY = a.y;
-      }
+      this.walk(a, s, dx, dy, dt, speed);
       if (d > high + 40) return;
     } else {
       a.moving = false;
     }
-    bot.wait -= dt;
-    if (bot.wait <= 0 && a.cooldown <= 0 && !a.attack && d <= high + 40) {
+    s.wait -= dt;
+    if (s.wait <= 0 && a.cooldown <= 0 && !a.attack && d <= high + 40) {
       const aim = this.aimPoint(a, o);
       this.startAttack(a, aim.x, aim.y);
-      bot.wait = rand(0.25, 0.8);
+      s.wait = cautious ? rand(0.25, 0.8) : 0;
     }
   }
 
-  update(dt: number, input: Input) {
+  /** The object drawn under a point of the square, the one in front if several overlap. */
+  objectAt(x: number, y: number): Obj | null {
+    let best: Obj | null = null;
+
+    for (const o of this.objs) {
+      if (o.dead || o.def.decor) continue;
+      const half = Math.max(o.w / 2, 26), top = o.y - Math.max(o.h, 50);
+      if (x < o.x - half || x > o.x + half || y < top || y > o.y + 8) continue;
+      if (!best || o.y > best.y) best = o;
+    }
+    return best;
+  }
+
+  /** A click or tap: on an object it orders an attack, anywhere else a walk. */
+  click(x: number, y: number) {
+    if (this.over || this.demo) return;
+    const obj = this.objectAt(x, y);
+
+    x = Math.max(30, Math.min(WORLD.w - 30, x));
+    y = Math.max(WORLD.shopBase + RADIUS, Math.min(WORLD.h - 24, y));
+    this.order = { obj, x, y };
+    this.marker = obj ? null : { x, y, life: 1 };
+    this.steer = this.newBot(this.player.weapon);
+    this.steer.wait = 0;
+    this.sounds.push("pick");
+  }
+
+  private obey(p: Actor, dt: number) {
+    const order = this.order;
+
+    if (!order) { p.moving = false; return; }
+    if (order.obj) {
+      if (order.obj.dead) { this.order = null; p.moving = false; return; }
+      this.pursue(p, this.steer, order.obj, dt, SPEED, false);
+      return;
+    }
+    const before = Math.hypot(order.x - p.x, order.y - p.y);
+
+    if (before < 8) { this.order = null; this.marker = null; p.moving = false; return; }
+    this.walk(p, this.steer, order.x - p.x, order.y - p.y, dt, SPEED * Math.min(1, before / 14 + 0.3));
+    // Give up on a spot that cannot be reached (inside a car, behind a wall) instead of pushing forever.
+    this.steer.retarget += dt;
+    if (this.steer.retarget > 1.4) {
+      if (before > this.steer.wait - 12 && this.steer.wait > 0) { this.order = null; this.marker = null; p.moving = false; }
+      this.steer.wait = before; this.steer.retarget = 0;
+    }
+  }
+
+  update(dt: number) {
     if (this.over) dt *= 0.25;
     else {
       this.time -= dt;
@@ -375,18 +418,7 @@ export class Game {
         p.bot ??= this.newBot(p.char.special);
         this.think(p, dt);
       } else {
-        this.move(p, input.mx, input.my, dt, SPEED);
-        this.autoTarget = this.pickAuto(p);
-        if (input.attack && p.cooldown <= 0 && !p.attack) {
-          if (input.aim) this.startAttack(p, input.aim.x, input.aim.y);
-          else if (this.autoTarget) {
-            const aim = this.aimPoint(p, this.autoTarget);
-            this.startAttack(p, aim.x, aim.y);
-          } else {
-            const reach = p.weapon === "bat" ? 60 : 260;
-            this.startAttack(p, p.x + (p.flip ? -reach : reach), p.y + (p.back ? -reach * 0.6 : reach * 0.25));
-          }
-        }
+        this.obey(p, dt);
       }
       for (const a of this.actors) if (a.bot && a !== p) this.think(a, dt);
     }
@@ -444,5 +476,6 @@ export class Game {
     for (const t of this.tracers) t.life -= dt;
     this.tracers = this.tracers.filter((t) => t.life > 0);
     this.shake = Math.max(0, this.shake - dt);
+    if (this.marker && (this.marker.life -= dt * 0.8) <= 0.25) this.marker.life = 0.25;
   }
 }

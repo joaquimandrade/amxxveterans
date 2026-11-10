@@ -27,19 +27,21 @@ WEAPONS = ["bat", "molotov", "shotgun"]
 MIRROR: set[str] = set()
 # Per-frame size corrections for sheets where one frame was painted bigger or smaller, e.g. {"leo_bat_back": [1, 1.06, 1, 1]}.
 FRAME_SCALE: dict[str, list[float]] = {}
+# Frames to swap for another frame of the same sheet, e.g. a wind-up that turned to face the camera in a back view.
+REPLACE: dict[str, dict[int, int]] = {"moussa_molotov_back": {1: 0}}
 # Which frame of an attack sheet stands upright (the scale reference); frame 0 unless noted.
 UPRIGHT: dict[str, int] = {}
 
 # name: (sheet, column, row, world width)
 OBJECTS = {
-    "hatch": ("vehicles", 0, 0, 250), "saloon": ("vehicles", 1, 0, 290), "van": ("vehicles", 2, 0, 320),
-    "taxi": ("vehicles", 0, 1, 290), "suv": ("vehicles", 1, 1, 290), "scooter": ("vehicles", 2, 1, 130),
-    "morris": ("street_a", 0, 0, 105), "kiosk": ("street_a", 1, 0, 210), "shelter": ("street_a", 2, 0, 260),
-    "booth": ("street_a", 3, 0, 100), "lamp": ("street_a", 0, 1, 80), "light": ("street_a", 1, 1, 70),
-    "fountain": ("street_a", 2, 1, 95), "tree": ("street_a", 3, 1, 280),
-    "terrace": ("street_b", 0, 0, 210), "stall": ("street_b", 1, 0, 240), "meter": ("street_b", 2, 0, 62),
-    "bikes": ("street_b", 3, 0, 230), "bench": ("street_b", 0, 1, 180), "statue": ("street_b", 1, 1, 150),
-    "bins": ("street_b", 2, 1, 200), "panel": ("street_b", 3, 1, 115),
+    "hatch": ("vehicles", 0, 0, 235), "saloon": ("vehicles", 1, 0, 275), "van": ("vehicles", 2, 0, 300),
+    "taxi": ("vehicles", 0, 1, 265), "suv": ("vehicles", 1, 1, 270), "scooter": ("vehicles", 2, 1, 105),
+    "morris": ("street_a", 0, 0, 82), "kiosk": ("street_a", 1, 0, 195), "shelter": ("street_a", 2, 0, 250),
+    "booth": ("street_a", 3, 0, 82), "lamp": ("street_a", 0, 1, 50), "light": ("street_a", 1, 1, 46),
+    "fountain": ("street_a", 2, 1, 72), "tree": ("street_a", 3, 1, 270),
+    "terrace": ("street_b", 0, 0, 175), "stall": ("street_b", 1, 0, 215), "meter": ("street_b", 2, 0, 38),
+    "bikes": ("street_b", 3, 0, 200), "bench": ("street_b", 0, 1, 150), "statue": ("street_b", 1, 1, 105),
+    "bins": ("street_b", 2, 1, 150), "panel": ("street_b", 3, 1, 88),
     "boulangerie": ("shops_a", 0, 0, 400), "cafe": ("shops_a", 1, 0, 400), "pharmacie": ("shops_a", 2, 0, 400),
     "banque": ("shops_b", 0, 0, 400), "boutique": ("shops_b", 1, 0, 400), "tabac": ("shops_b", 2, 0, 400),
 }
@@ -47,19 +49,29 @@ GRIDS = {"vehicles": (3, 2), "street_a": (4, 2), "street_b": (4, 2), "shops_a": 
 
 
 def keyed(name, size=None):
-    """Loads a sheet and returns (rgb, alpha), with the magenta backdrop removed and its spill cleaned off the edges."""
+    """Loads a sheet and returns (rgb, alpha), with the magenta backdrop removed and its spill cleaned off.
+
+    The painter's magenta varies from sheet to sheet (pure, dull pink, even a checkerboard of two tones) and
+    carries cast shadows, so the key measures how magenta a pixel is relative to its own brightness and compares
+    that with the sheet's border.
+    """
     image = Image.open(f"{RAW}/{name}.png").convert("RGB")
     if size and image.size != size:
         image = image.resize(size, Image.LANCZOS)
     rgb = np.asarray(image).astype(np.float32)
     magenta = np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1]
-    alpha = np.clip((150 - magenta) / 90, 0, 1)
+    ratio = magenta / np.maximum(rgb.max(axis=2), 1)
+    ring = np.concatenate([ratio[:16].ravel(), ratio[-16:].ravel(), ratio[:, :16].ravel(), ratio[:, -16:].ravel()])
+    level = max(0.2, float(np.percentile(ring, 10)))
+    alpha = np.clip((0.66 * level - ratio) / (0.3 * level), 0, 1)
+    alpha = np.maximum(alpha, np.clip((26 - magenta) / 14, 0, 1))  # dark or neutral pixels are never backdrop
+    backdrop = np.median(np.concatenate([rgb[:16].reshape(-1, 3), rgb[-16:].reshape(-1, 3)]), axis=0)
     edge = (alpha > 0) & (alpha < 1)
-    safe = np.maximum(alpha, 0.15)[..., None]
-    clean = np.clip((rgb - (1 - safe) * np.array([255, 0, 255], np.float32)) / safe, 0, 255)
+    safe = np.maximum(alpha, 0.2)[..., None]
+    clean = np.clip((rgb - (1 - safe) * backdrop) / safe, 0, 255)
     rgb = np.where(edge[..., None], clean, rgb)
-    # Whatever pink is left on soft edges: pull red and blue down to green.
-    spill = np.clip(np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1] - 25, 0, None) * (alpha < 1)
+    # Pink reflections and fringes left on the object: pull red and blue down toward green.
+    spill = np.clip(np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1] - 12, 0, None) * 0.85
     rgb[..., 0] -= spill
     rgb[..., 2] -= spill
     return rgb, alpha
@@ -73,38 +85,82 @@ def save(image, name, quality=84):
     image.save(f"{ART}/{name}.webp", quality=quality, method=6)
 
 
-def split_columns(alpha, count):
-    """Cuts a row of figures at the emptiest column near each equal division."""
-    solid = alpha > 0.5
-    mass = solid.sum(axis=0)
-    width = alpha.shape[1]
-    edges = [0]
-    for index in range(1, count):
-        middle = index * width // count
-        low, high = middle - width // (count * 4), middle + width // (count * 4)
-        window = mass[low:high]
-        empty = np.where(window == window.min())[0]
-        edges.append(low + int(empty[len(empty) // 2]))
-    return edges + [width]
-
-
 def figure_frames(name, count=4):
-    """Returns per frame: rgb, mask, feet row, top row and hips column (all in frame coordinates)."""
+    """Returns per frame: rgb, mask, the body blob, its top and feet rows (frame coordinates).
+
+    Weapons reach into the neighbouring columns, so figures are told apart as connected blobs: the `count`
+    biggest are the bodies, and loose bits (a wick flame, a muzzle flash, a spent shell) join the nearest body.
+    """
     rgb, alpha = keyed(name)
-    edges = split_columns(alpha, count)
+    labels, found = ndimage.label(ndimage.binary_closing(alpha > 0.5, iterations=3))
+    sizes = np.bincount(labels.ravel())
+    sizes[0] = 0
+    order = np.argsort(sizes)[::-1]
+    bodies = [int(l) for l in order[:count] if sizes[l] > 0]
     frames = []
-    for index in range(count):
-        left, right = edges[index], edges[index + 1]
-        part = alpha[:, left:right]
-        labels, found = ndimage.label(ndimage.binary_closing(part > 0.5, iterations=3))
-        sizes = np.bincount(labels.ravel())
-        sizes[0] = 0
-        body = labels == sizes.argmax()
-        # Keep what belongs to the figure (a muzzle flash, a wick flame) but not strays from the neighbours.
-        keep = np.isin(labels, [l for l in range(1, found + 1) if sizes[l] > sizes.max() * 0.004])
-        ys, xs = np.where(body)
-        top, feet = ys.min(), ys.max() + 1
-        frames.append(dict(rgb=rgb[:, left:right], mask=part * keep, body=body, top=top, feet=feet))
+    if len(bodies) == count and sizes[bodies[-1]] > sizes[bodies[0]] * 0.3:
+        boxes = ndimage.find_objects(labels)
+        groups = {body: [body] for body in bodies}
+        for label in range(1, found + 1):
+            if label in groups or sizes[label] < sizes[bodies[0]] * 0.0015:
+                continue
+            ys, xs = boxes[label - 1]
+
+            def gap(body):
+                by, bx = boxes[body - 1]
+                return max(bx.start - xs.stop, xs.start - bx.stop, 0) + max(by.start - ys.stop, ys.start - by.stop, 0)
+
+            nearest = min(bodies, key=gap)
+            if gap(nearest) < alpha.shape[1] * 0.06:
+                groups[nearest].append(label)
+        for body in sorted(bodies, key=lambda l: boxes[l - 1][1].start + boxes[l - 1][1].stop):
+            member = np.isin(labels, groups[body])
+            xs = np.where(member.any(axis=0))[0]
+            left, right = xs.min(), xs.max() + 1
+            ys = np.where((labels == body).any(axis=1))[0]
+            frames.append(dict(rgb=rgb[:, left:right], mask=(alpha * member)[:, left:right],
+                               body=(labels == body)[:, left:right], top=ys.min(), feet=ys.max() + 1))
+    else:
+        # A muzzle flash that reaches the next figure glues two bodies together. Cut the flash out, find the
+        # bodies without it, then give every loose piece to the body it touches, the left one on a tie
+        # (everything on these sheets points to the right).
+        solid = ndimage.binary_closing(alpha > 0.5, iterations=3)
+        red, green, blue = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+        # Two definitions of "flash": a wide one, and a narrow one for characters who wear yellow.
+        for flash, grow in (((red > 236) & (green > 170) & (blue < 190) & (red - blue > 60), 7),
+                            ((red > 244) & (green > 200) & (blue < 215) & (red - blue > 45), 14)):
+            flash = ndimage.binary_dilation(ndimage.binary_opening(flash, iterations=2), iterations=grow) & solid
+            core, _ = ndimage.label(solid & ~flash)
+            core_sizes = np.bincount(core.ravel())
+            core_sizes[0] = 0
+            bodies = [int(l) for l in np.argsort(core_sizes)[::-1][:count]]
+            if core_sizes[bodies[-1]] > core_sizes[bodies[0]] * 0.3:
+                break
+        else:
+            raise SystemExit(f"{name}: cannot tell the {count} figures apart, repaint this sheet")
+        bodies.sort(key=lambda l: np.where(core == l)[1].mean())
+        distance = [ndimage.distance_transform_edt(core != body) for body in bodies]
+        pieces, found = ndimage.label(solid & ~np.isin(core, bodies))
+        owner = np.zeros(pieces.shape, np.int32)
+        for index, body in enumerate(bodies):
+            owner[core == body] = index + 1
+        for piece in range(1, found + 1):
+            where = pieces == piece
+            if where.sum() < core_sizes[bodies[0]] * 0.0015:
+                continue
+            reach = [float(d[where].min()) for d in distance]
+            best = next(i for i, r in enumerate(reach) if r <= min(reach) + 10)
+            if reach[best] < alpha.shape[1] * 0.06:
+                owner[where] = best + 1
+        for index, body in enumerate(bodies):
+            member = owner == index + 1
+            xs = np.where(member.any(axis=0))[0]
+            left, right = xs.min(), xs.max() + 1
+            ys = np.where((core == body).any(axis=1))[0]
+            frames.append(dict(rgb=rgb[:, left:right], mask=(alpha * member)[:, left:right],
+                               body=(core == body)[:, left:right], top=ys.min(), feet=ys.max() + 1))
+    for target, source in REPLACE.get(name, {}).items():
+        frames[target] = frames[source]
     if name in MIRROR:
         for frame in frames:
             for key in ("rgb", "mask", "body"):
