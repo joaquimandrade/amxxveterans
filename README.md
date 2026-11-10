@@ -1,8 +1,8 @@
-# AMXX Veterans
+# French Rebellion
 
-Browser sandbox for exploring characters, animation and powers together. Not a game yet.
+You and three bots vandalise a Parisian square full of cars and shops. Whoever does the most damage before the clock runs out wins.
 
-**Stack:** Three.js and Vite on the client, Colyseus on the server, TypeScript on both sides. The server owns the game state.
+Built for phones first; it also plays on a desktop browser. Plain 2D canvas, Vite and TypeScript. The whole game runs in the browser; the server only serves the files.
 
 ## Run it
 
@@ -10,41 +10,47 @@ Needs Node 22 or newer.
 
 ```sh
 npm install
-npm run dev
+npm run dev --workspace=client     # http://localhost:5173
+npm run build && npm start         # production, port 8091
 ```
-
-Open http://localhost:5173 in two tabs. Dev mode connects to the game server on port 8091.
-
-For production, `npm run build && npm start` serves the client and the game from port 8091.
 
 ## Branch previews
 
-https://amxx.duendefm.work lists the branches. `/branch/NAME/` runs the latest commit of that branch, client and server, so a push is live on the next visit.
+https://amxx.duendefm.work lists the branches. `/branch/frenchrebellion-fable/` runs the latest commit of this branch. `hub/hub.ts` does the builds and the proxying.
 
-Each branch runs in its own Docker container with no access to the host, the LAN or the internet. `hub/hub.ts` does the builds and the proxying.
+## How it plays
 
-## Controls
+- Everything in the square has an energy bar. The icon at the left of the bar is the weapon that object fears (2.2 times the damage); the other weapons only do 0.7 times.
+- Molotov burns cars, wood and paper. The bat shatters glass. The shotgun pierces steel and stone.
+- Three characters, each 1.5 times stronger with one weapon: Moussa (bat), Yasmine (molotov), Léo (shotgun).
+- Damage dealt is your score, plus a bonus for the final blow. The scoreboard updates live.
 
-WASD or arrows move, the mouse aims, and click or space fires.
+**Phone:** drag anywhere to walk, the red button attacks the ringed target, the three buttons above it pick the weapon.
+**Desktop:** WASD or arrows walk, click attacks toward the pointer, Space attacks the ringed target, 1 2 3 (or Q/E) pick the weapon.
+
+Test hooks: `?auto=yasmine` skips the menus, `&demo=1` lets a bot play your character, `&skip=30` plays 30 seconds at once, `&screen=select` stops at the character screen.
 
 ## Where things live
 
 | Path | What it does |
 | --- | --- |
-| `server/src/arena.ts` | The game: movement, fireballs, hits, knockback |
-| `server/src/state.ts` | State synced to clients |
-| `client/src/main.ts` | Input, avatars, animation, following the server state |
-| `client/src/effects.ts` | Fireball and particle effects |
-| `client/src/world.ts` | Scene, lighting, ground, crates |
+| `client/src/data.ts` | Weapons, characters, objects, their weak spots and the layout of the square |
+| `client/src/game.ts` | The round: movement, attacks, damage, scores, bots |
+| `client/src/render.ts` | Drawing: ground, depth-sorted sprites, energy bars, fire and smoke |
+| `client/src/main.ts` | Screens, touch and keyboard input, scoreboard, frame loop |
+| `client/src/audio.ts` | Synthesised sound effects |
+| `tools/gen_art.py` | Prompts for every painted sheet, sent to Gemini 3 Pro Image through OpenRouter |
+| `tools/build_art.py` | Keys the magenta backdrop, cuts the sheets and normalises character frames |
+| `tools/placeholder_art.py` | Draws stand-in sheets in the same layouts, for working without the painted ones |
 
-## Adding a power
+## Art
 
-1. Add a message and the logic in `server/src/arena.ts`.
-2. Add its look in `client/src/effects.ts`.
-3. Bind a key in `client/src/main.ts`.
+```sh
+python tools/gen_art.py RAW '*'                    # paints every sheet into RAW (about 46 images)
+python tools/placeholder_art.py RAW                # fills in stand-ins for whatever is missing
+python tools/build_art.py RAW . --check CHECK_DIR  # cuts sprites into client/public/art, writes contact sheets
+```
 
-## Models
+Character sheets are one row of four frames, facing the camera or facing away, always turned to the right; the game mirrors them for the left. `build_art.py` scales every sheet from its upright frame so a character has the same body size in every frame, puts the feet on one baseline and the hips on the cell centre. Look at the contact sheets before committing: `MIRROR`, `FRAME_SCALE` and `UPRIGHT` at the top of the script fix sheets that came back facing the wrong way or with one odd frame.
 
-`client/public/models/robot.glb` is RobotExpressive by Tomás Laulhé, CC0, with modifications by Don McCurdy, from the three.js examples.
-
-This repository is public, so check a model's licence before committing it. Many store licences forbid redistribution.
+Painted art in `client/public/art` is generated with Gemini 3 Pro Image; if this ever ships on a store, it must be disclosed as AI-generated.

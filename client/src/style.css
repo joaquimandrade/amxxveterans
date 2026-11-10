@@ -1,0 +1,69 @@
+:root { color-scheme: dark; --ink: #1a1412; --paper: #f3e6d0; --gold: #ffd84a; --red: #d8432e; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ink); color: var(--paper);
+  font: 16px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overscroll-behavior: none;
+  user-select: none; -webkit-user-select: none; touch-action: none; }
+[hidden] { display: none !important; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+button { font: inherit; color: inherit; border: 0; cursor: pointer; touch-action: none; }
+
+.screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: clamp(10px, 2.4vh, 22px); padding: max(14px, env(safe-area-inset-top)) 14px max(18px, env(safe-area-inset-bottom)); text-align: center; }
+.backdrop { position: absolute; inset: 0; z-index: -1; background: #241a22 center / cover no-repeat; }
+.backdrop::after { content: ""; position: absolute; inset: 0; background: linear-gradient(#1a1412aa, #1a141200 35%, #1a141200 60%, #1a1412dd); }
+.backdrop.dim::after { background: #1a1412c8; }
+h1 { margin: 0 0 auto; padding-top: 5vh; width: min(88vw, 620px); }
+h1 img { width: 100%; max-height: 42vh; object-fit: contain; filter: drop-shadow(0 6px 14px #000a); }
+h2 { margin: 0; font-size: clamp(22px, 5.4vw, 34px); letter-spacing: .04em; text-transform: uppercase; text-shadow: 0 2px 8px #000; }
+#loading { margin: 0 0 6vh; opacity: .8; }
+.big { padding: 14px 34px; border-radius: 999px; background: var(--red); color: #fff; font-weight: 800; font-size: clamp(18px, 4.6vw, 24px);
+  letter-spacing: .05em; text-transform: uppercase; box-shadow: 0 5px 0 #7d2014, 0 10px 24px #0009; }
+.big:active { transform: translateY(3px); box-shadow: 0 2px 0 #7d2014; }
+#begin { margin-bottom: 7vh; animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { transform: scale(1.06); } }
+
+#cast { display: flex; gap: clamp(6px, 1.8vw, 18px); width: min(100%, 860px); align-items: stretch; justify-content: center; }
+.card { flex: 1 1 0; min-width: 0; max-width: 270px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 6px 10px;
+  border-radius: 14px; background: #2a1f1bd9; border: 3px solid #5a4230; transition: transform .15s, border-color .15s; }
+.card.on { border-color: var(--gold); transform: translateY(-6px); background: #3a2a20f0; box-shadow: 0 10px 26px #000a; }
+.card img.who { width: 100%; height: clamp(150px, 40vh, 380px); object-fit: contain; pointer-events: none; }
+.card b { font-size: clamp(17px, 4.4vw, 24px); }
+.card small { opacity: .85; font-size: clamp(11px, 3vw, 14px); min-height: 2.6em; }
+.card .perk { display: flex; align-items: center; gap: 4px; font-weight: 700; font-size: clamp(11px, 3.1vw, 15px); color: var(--gold); }
+.card .perk img { width: clamp(26px, 7vw, 38px); height: clamp(26px, 7vw, 38px); }
+
+#hud > * { position: fixed; }
+#board { top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); margin: 0; padding: 6px 8px; list-style: none;
+  min-width: 124px; border-radius: 10px; background: #1a1412c4; font-size: 13px; font-variant-numeric: tabular-nums; pointer-events: none; }
+#board li, #final li { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+#board li i, #final li i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+#board li span, #final li span { flex: 1; text-align: left; }
+#board li.me, #final li.me { font-weight: 800; color: var(--gold); }
+#clock { top: max(8px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); padding: 4px 14px; border-radius: 10px;
+  background: #1a1412c4; font-weight: 800; font-size: 22px; font-variant-numeric: tabular-nums; pointer-events: none; }
+#clock.late { color: #ff6b5a; }
+#mute { top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); width: 40px; height: 40px; border-radius: 50%; background: #1a1412c4; font-size: 20px; }
+#mute.off { opacity: .45; text-decoration: line-through; }
+#hint { left: 50%; top: 112px; transform: translateX(-50%); width: max-content; max-width: 92vw; padding: 6px 12px; border-radius: 10px; background: #1a1412c4;
+  font-size: 13px; text-align: center; pointer-events: none; transition: opacity .6s; }
+#stick { width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 3px solid #f3e6d066; background: #1a141244; pointer-events: none; opacity: 0; transition: opacity .15s; }
+#stick.on { opacity: 1; }
+#stick i { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px; border-radius: 50%; background: #f3e6d0bb; }
+#attack { right: max(16px, env(safe-area-inset-right)); bottom: max(22px, env(safe-area-inset-bottom)); width: 104px; height: 104px; border-radius: 50%;
+  background: radial-gradient(#e8573f, #a82a1a); border: 4px solid #ffd9c9cc; box-shadow: 0 6px 18px #000a; padding: 14px; }
+#attack img { width: 100%; height: 100%; pointer-events: none; filter: drop-shadow(0 2px 3px #0008); }
+#attack.down { transform: scale(.93); filter: brightness(1.25); }
+#weapons { right: max(12px, env(safe-area-inset-right)); bottom: calc(max(22px, env(safe-area-inset-bottom)) + 118px); display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+#weapons button { position: relative; width: 64px; height: 64px; border-radius: 16px; background: #1a1412d0; border: 3px solid #5a4230; padding: 5px; }
+#weapons button img { width: 100%; height: 100%; pointer-events: none; }
+#weapons button.on { border-color: var(--gold); background: #4a3520f0; transform: scale(1.1); box-shadow: 0 0 16px #ffd84a88; }
+#weapons button em { position: absolute; left: -8px; top: -8px; padding: 0 5px; border-radius: 8px; background: var(--gold); color: var(--ink); font: 800 11px/16px system-ui; }
+#weapons button kbd { position: absolute; right: 3px; bottom: 1px; font: 700 10px system-ui; opacity: .6; }
+@media (pointer: coarse) { #weapons button kbd { display: none; } }
+@media (max-height: 480px) { #weapons { flex-direction: row; bottom: max(22px, env(safe-area-inset-bottom)); right: calc(max(16px, env(safe-area-inset-right)) + 118px); } }
+
+#end { background: #1a1412b8; }
+.panel { width: min(92vw, 400px); padding: 22px 20px 26px; border-radius: 18px; background: #2a1f1bf2; border: 3px solid #5a4230; display: flex; flex-direction: column; gap: 16px; align-items: center; }
+#final { margin: 0; padding: 0; list-style: none; width: 100%; font-size: 20px; font-variant-numeric: tabular-nums; }
+#final li { padding: 6px 4px; border-bottom: 1px solid #5a423066; }
+#final li i { width: 14px; height: 14px; }

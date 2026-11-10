@@ -2,20 +2,46 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AMXX Veterans</title>
-    <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1412; }
-      canvas { display: block; }
-      #hud {
-        position: fixed; top: 12px; left: 14px; color: #f3e6d0; pointer-events: none;
-        font: 14px/1.5 ui-monospace, Menlo, Consolas, monospace; text-shadow: 0 1px 3px #000;
-      }
-      #hud b { color: #ffb347; }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#1a1412" />
+    <title>French Rebellion</title>
+    <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <div id="hud">connecting…</div>
+    <canvas id="view"></canvas>
+
+    <div id="hud" hidden>
+      <ol id="board"></ol>
+      <div id="clock">1:40</div>
+      <button id="mute" aria-label="Sound">♪</button>
+      <div id="hint"></div>
+      <div id="stick"><i></i></div>
+      <div id="weapons"></div>
+      <button id="attack" aria-label="Attack"><img alt="" /></button>
+    </div>
+
+    <section id="title" class="screen">
+      <div class="backdrop"></div>
+      <h1><img id="logo" alt="French Rebellion" /></h1>
+      <p id="loading">Loading…</p>
+      <button id="begin" class="big" hidden>Tap to start</button>
+    </section>
+
+    <section id="select" class="screen" hidden>
+      <div class="backdrop dim"></div>
+      <h2>Choose your rioter</h2>
+      <div id="cast"></div>
+      <button id="go" class="big">Hit the square</button>
+    </section>
+
+    <section id="end" class="screen" hidden>
+      <div class="panel">
+        <h2 id="verdict"></h2>
+        <ol id="final"></ol>
+        <button id="again" class="big">Play again</button>
+      </div>
+    </section>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

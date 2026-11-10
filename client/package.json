@@ -7,13 +7,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@colyseus/schema": "^5.0.45",
-    "@colyseus/sdk": "^0.18.9",
-    "three": "^0.187.0"
-  },
   "devDependencies": {
-    "@types/three": "^0.187.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.6"
   }
