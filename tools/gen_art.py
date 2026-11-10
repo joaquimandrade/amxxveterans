@@ -270,6 +270,8 @@ def run(name):
         return f"{name}: exists"
     content = [{"type": "text", "text": spec["prompt"]}]
     for ref in spec["refs"]:
+        if not os.path.exists(f"{RAW}/{ref}.png"):
+            return f"{name}: SKIPPED, {ref} is missing"
         content.append({"type": "image_url", "image_url": {"url": data_url(f"{RAW}/{ref}.png")}})
     for attempt in range(3):
         try:
@@ -306,6 +308,8 @@ if __name__ == "__main__":
     wanted = []
     for arg in sys.argv[2:]:
         wanted += [n for n in JOBS if n.startswith(arg[:-1])] if arg.endswith("*") else [arg]
-    with ThreadPoolExecutor(8) as pool:
-        for line in pool.map(run, wanted):
-            print(line, flush=True)
+    # Sheets painted from another sheet (a character reference, an intact object sheet) wait for it.
+    for stage in (lambda n: not JOBS[n]["refs"], lambda n: JOBS[n]["refs"]):
+        with ThreadPoolExecutor(8) as pool:
+            for line in pool.map(run, [n for n in wanted if stage(n)]):
+                print(line, flush=True)

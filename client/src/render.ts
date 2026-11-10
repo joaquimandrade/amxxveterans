@@ -165,7 +165,7 @@ function drawObject(c: CanvasRenderingContext2D, o: Obj) {
 
 function drawBar(c: CanvasRenderingContext2D, o: Obj, game: Game) {
   const width = Math.max(40, Math.min(o.w * 0.5, 120)), height = 8;
-  const x = o.x - width / 2 + 10, y = o.y - Math.min(o.h, 210) - 16;
+  const x = o.x - width / 2 + 14, y = o.y - Math.min(o.h, 210) - 16;
   const ratio = o.hp / o.def.hp;
   const close = Math.hypot(o.x - game.player.x, o.y - game.player.y) < 460 || ratio < 1;
 
@@ -179,13 +179,13 @@ function drawBar(c: CanvasRenderingContext2D, o: Obj, game: Game) {
   const lit = o.def.weak === game.player.weapon;
 
   c.fillStyle = lit ? "#ffd84a" : "rgba(18,12,10,.8)";
-  c.beginPath(); c.arc(x - 13, y + height / 2, 12, 0, 7); c.fill();
-  if (icon) c.drawImage(icon, x - 24, y + height / 2 - 11, 22, 22);
+  c.beginPath(); c.arc(x - 17, y + height / 2, 16, 0, 7); c.fill();
+  if (icon) c.drawImage(icon, x - 31, y + height / 2 - 14, 28, 28);
   c.globalAlpha = 1;
 }
 
 export function draw(c: CanvasRenderingContext2D, game: Game, width: number, height: number, dpr: number, time: number, dt: number) {
-  const zoom = Math.max(0.5, Math.min(0.95, Math.sqrt(width * height) / 1050));
+  const zoom = Math.max(0.5, Math.min(0.95, Math.sqrt(width * height) / 950));
   const p = game.player;
   const viewW = width / zoom, viewH = height / zoom;
   const follow = 1 - Math.exp(-dt * 7);
